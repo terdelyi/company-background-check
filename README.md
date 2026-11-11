@@ -1,4 +1,4 @@
-<img src=".github/banner.png" alt="Company background check: vet a UK employer before you sign" width="740">
+<img src=".github/logo.png" alt="" width="200">
 
 # Company background check
 
