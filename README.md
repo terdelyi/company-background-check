@@ -23,7 +23,7 @@ Every flag links to its evidence. Anything matched on a name alone is reported a
 Claude Code and other agents:
 
 ```bash
-npx skills add terdelyi/company-background-check
+npx skills add terdelyi/company-background-check -g
 ```
 
 claude.ai: zip the `skills/company-background-check` folder and upload it under Settings → Capabilities → Skills.

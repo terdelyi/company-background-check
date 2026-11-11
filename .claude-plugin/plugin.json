@@ -1,0 +1,7 @@
+{
+  "name": "company-background-check",
+  "description": "Run a background check on a UK company as an employer, delivered as a printable HTML report with a scorecard.",
+  "author": { "name": "Tamas Erdelyi" },
+  "repository": "https://github.com/terdelyi/company-background-check",
+  "license": "MIT"
+}
