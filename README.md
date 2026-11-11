@@ -4,7 +4,7 @@
 
 [![skills.sh](https://skills.sh/b/terdelyi/company-background-check)](https://skills.sh/terdelyi/company-background-check)
 
-A Claude skill that runs a background check on a UK company from the point of view of someone who works there, or is thinking about it. Give it a company name or number and it produces a printable HTML report with a risk rating and scorecard at the top and the evidence underneath.
+An agent skill that runs a background check on a UK company from the point of view of someone who works there, or is thinking about it. Give it a company name or number and it produces a printable HTML report with a risk rating and scorecard at the top and the evidence underneath. It works with Claude Code, Codex, Cursor and other agents that support skills.
 
 ## What it checks
 
@@ -20,7 +20,7 @@ Every flag links to its evidence. Anything matched on a name alone is reported a
 
 ## Install
 
-Claude Code and other agents:
+Claude Code, Codex, Cursor and other agents:
 
 ```bash
 npx skills add terdelyi/company-background-check -g
@@ -40,15 +40,13 @@ You need Node 22 or later (nothing to install) and a free Companies House API ke
 }
 ```
 
+Other agents need it in the environment their shell commands run in.
+
 Without a key the skill falls back to the public Companies House pages, which is slower and less complete.
 
 ## Use
 
-```
-/company-background-check <company name or number>
-```
-
-Or just ask, for example "check this company before I accept the offer". The registered name or company number works best, because many companies trade under a different name.
+Ask your agent, for example "check this company before I accept the offer". In Claude Code you can also run `/company-background-check <company name or number>`. The registered name or company number works best, because many companies trade under a different name.
 
 ## Limits
 
