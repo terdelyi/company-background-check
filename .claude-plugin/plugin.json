@@ -1,5 +1,6 @@
 {
   "name": "company-background-check",
+  "version": "1.0.0",
   "description": "Run a background check on a UK company as an employer, delivered as a printable HTML report with a scorecard.",
   "author": { "name": "Tamas Erdelyi" },
   "repository": "https://github.com/terdelyi/company-background-check",
