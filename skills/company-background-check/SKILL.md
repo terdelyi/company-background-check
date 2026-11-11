@@ -38,7 +38,7 @@ Run `scripts/ch-check.mjs` from this skill's folder as it is, and write its outp
 node <skill folder>/scripts/ch-check.mjs "<company number or name>" --aka "<brand, product or website names>" > ch.json
 ```
 
-`--aka` is optional but worth filling in. Companies House only knows registered names, and many companies trade under a different one: a company registered as "{Name} Holdings Ltd" may sell a product called "{Brand}". Pass every brand, product and website name you can find so the name matching sees them.
+Fill in `--aka` before the first run. Companies House only knows registered names, and many companies trade under a different one: a company registered as "{Name} Holdings Ltd" may sell a product called "{Brand}", or rebrand to initials without changing its registered name. The script searches The Gazette, tribunal decisions and the sponsor register under every name it is given, and matches directors' other companies against them, so a missing brand is a missed check. Open the company's website first (its home page, footer and about page) and pass every brand, trading name, product and website name you find. If later research turns up one you did not pass, run the script again with it added and use the new output.
 
 Exit codes: `0` JSON report on stdout, `2` no key or API unreachable (use path B), `3` ambiguous name (candidates on stdout, ask the user).
 
@@ -110,7 +110,7 @@ For each failed company still linked to a director, the script also searches emp
 
 ## Step 2 - Web research
 
-Run these searches (in parallel where possible), look back about five years, and keep the most recent items first. Before using any hit, confirm it is about this company and not a namesake: check location, sector or a director's name.
+Run these searches (in parallel where possible), look back about five years, and keep the most recent items first. `<name>` means the registered name and every trading name you passed to `--aka`: press, LinkedIn pages and review sites usually use the brand, so a search under the registered name alone misses them. Before using any hit, confirm it is about this company and not a namesake: check location, sector or a director's name. A short brand such as a set of initials matches many unrelated businesses, so pair it with the sector or town.
 
 | Topic | Search for | Capture |
 |---|---|---|
