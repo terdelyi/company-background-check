@@ -1,4 +1,4 @@
-<img src=".github/logo.png" alt="" width="200">
+<img src=".github/logo.png" alt="" width="96">
 
 # Company background check
 
