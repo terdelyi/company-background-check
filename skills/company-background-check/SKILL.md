@@ -44,7 +44,7 @@ Exit codes: `0` JSON report on stdout, `2` no key or API unreachable (use path B
 
 The JSON has `company`, `directors` (active directors plus individual owners who are not directors, each with a `role`), `pscs`, `flags` (already sorted by severity, each with an evidence URL) and `meta` (caps hit, caveats). If `meta.people_without_officer_record` names anyone, the script found no officer record for that owner, so check their other companies by hand as in Path B step 3. Use the flags as given; add context, do not upgrade or drop them. There are two exceptions: the trading-name check below can raise a phoenix rating, and a tribunal decision you have read can raise a tribunal lead.
 
-`company.accounts.history` holds up to three years of accounts, newest first: net assets, cash, average employees and turnover where the filing tagged them, and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, read any `pdf` year as in "Reading PDF accounts" below: the same four figures and the going-concern note. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
+`company.accounts.history` holds up to five years of accounts, newest first: net assets, cash, average employees and turnover where the filing tagged them, and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, read any `pdf` year as in "Reading PDF accounts" below: the same four figures and the going-concern note. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
 
 `company.gazette` holds the corporate insolvency notices from The Gazette in the last five years that carry this company's number. A petition to wind up appears there weeks before Companies House shows anything, so the script flags one from the last 24 months as high and any other notice as medium. `meta.gazette_name_only` lists notices that matched a name but not the number: open each, and treat it as this company's only if the address or a director's name confirms it, then rate it as the script would and say you did so by hand. If `company.gazette.failed_searches` is not empty, search The Gazette by hand for those names and note it in "Not checked and limits".
 
@@ -63,7 +63,7 @@ The script raises these flags from iXBRL accounts. Apply them by hand to PDF acc
 - **Going concern** (high): the latest accounts or audit report state a *material uncertainty* about the company continuing as a going concern. The routine audit sentence saying no material uncertainty was found does not count.
 - **Net liabilities** (medium): net assets below zero at the latest year end.
 - **Net assets fall** (medium): net assets more than halved since the year before, while still positive.
-- **Headcount fall** (medium): average employees down by more than a quarter on the year before. Skip it when the earlier year had fewer than 5 employees, where one person leaving is not a trend.
+- **Headcount fall** (medium): average employees in the latest year more than a quarter below the highest year in the history, so cuts spread over several years still count. Skip it when that highest year had fewer than 5 employees, where one person leaving is not a trend.
 
 ### Reading PDF accounts
 
@@ -115,7 +115,7 @@ Run these searches (in parallel where possible), look back about five years, and
 | Topic | Search for | Capture |
 |---|---|---|
 | Funding and investment | `<name> funding round raised investment`, `<name> acquired acquisition investors` | Date, type (seed, Series A, grant, debt, acquisition), amount, investors or acquirer |
-| Redundancies | `<name> redundancies layoffs job cuts`, `<name> restructuring` | Date, what happened, how many or what share of staff |
+| Redundancies | `<name> redundancies layoffs job cuts`, `<name> restructuring`, then `<name> job cuts <year>` for each of the last five years the first results do not cover | Every round in the last five years, newest first: date, what happened, how many or what share of staff. Add any year-on-year fall in average employees from the accounts history |
 | Media coverage | `<name> news`, `<name> <CEO or founder name>` | Up to 8 items: date, outlet, headline, tone |
 | Legal and financial trouble | `<name> administration insolvency winding up`, `<name> employment tribunal`, `<name> The Gazette notice`, `<name> lawsuit fine investigation` | Tribunal decisions, winding-up petitions, regulator action, unpaid wages or other money owed to staff |
 | Paying suppliers | Search the company on check-payment-practices.service.gov.uk (only larger companies report) | Average days to pay and share paid within 30 days in the latest report. More than 60 days on average, or under half paid on time, is a Caution under Money |
@@ -132,7 +132,7 @@ Run these searches (in parallel where possible), look back about five years, and
 ## Step 3 - Risk rating
 
 - **HIGH** - any high-severity flag from step 1 (non-active status, overdue accounts, insolvency, strike-off notice, winding-up petition in the last 24 months, going-concern material uncertainty, strong phoenix pattern, serial company cycling, disqualification with a date-of-birth match), or credible reports of insolvency or of unpaid wages or other money owed to staff.
-- **MEDIUM** - any medium-severity flag, redundancies in the last 12 months, mostly negative coverage, or a review rating below 3.0.
+- **MEDIUM** - any medium-severity flag, redundancies in the last 12 months, two or more rounds of redundancies in the last five years, mostly negative coverage, or a review rating below 3.0.
 - **LOW** - none of the above.
 
 If Companies House could not be checked for a UK company, write the rating as "LOW (limited data)" at best. A missing check is not a clean result.
@@ -171,7 +171,7 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 | Insolvency history | |
 | Source | [Companies House]({url}) |
 
-**Financials** (up to three years, newest first; "n/a" where a figure was not tagged or stated)
+**Financials** (up to five years, newest first; "n/a" where a figure was not tagged or stated)
 
 | Year end | Net assets | Cash | Avg employees | Turnover | Format |
 |---|---|---|---|---|---|
@@ -247,7 +247,7 @@ The page opens with a scorecard so the reader gets the picture before the detail
 | Company record | Status, age, filings, registered office |
 | People and phoenix check | Directors, owners, phoenix and cycling patterns, disqualifications |
 | Money | Accounts (net assets, cash, going concern), charges, funding, paying suppliers |
-| Redundancies | Layoffs, restructuring and a falling headcount in the accounts |
+| Redundancies | Layoffs, restructuring and a falling headcount in the accounts over the last five years. A single round more than a year ago is listed but stays Clear |
 | Legal and insolvency notices | Gazette notices, tribunal decisions, minimum wage naming, regulator action |
 | Media coverage | Tone of press coverage |
 | Employee reviews | Glassdoor, Indeed and similar |

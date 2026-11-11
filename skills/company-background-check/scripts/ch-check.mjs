@@ -9,7 +9,7 @@ const BASE = process.env.CH_API_BASE || 'https://api.company-information.service
 const DOC_BASE = process.env.CH_DOC_API_BASE || 'https://document-api.company-information.service.gov.uk';
 const SITE = 'https://find-and-update.company-information.service.gov.uk';
 const MAX_DIRECTORS = 15, MAX_PROFILE_LOOKUPS = 60, MAX_HISTORY_LOOKUPS = 40, PHOENIX_WINDOW_MONTHS = 36, CYCLE_LOOKBACK_MONTHS = 120;
-const ACCOUNTS_FILINGS = 3, MIN_HEADCOUNT_FOR_TREND = 5, LEFT_BEFORE_FAILURE_MONTHS = 12;
+const ACCOUNTS_FILINGS = 5, MIN_HEADCOUNT_FOR_TREND = 5, LEFT_BEFORE_FAILURE_MONTHS = 12;
 const GAZETTE_BASE = process.env.GAZETTE_BASE || 'https://www.thegazette.co.uk', GAZETTE_SITE = 'https://www.thegazette.co.uk';
 // corporate insolvency notices; 2450 is a petition to wind up
 const GAZETTE_CATEGORY = 'G205010000', PETITION_CODE = '2450', MAX_GAZETTE_NOTICES = 10, GAZETTE_LOOKBACK_MONTHS = 60, PETITION_WINDOW_MONTHS = 24;
@@ -317,8 +317,10 @@ if (latestYear?.net_assets < 0) flag('medium', 'negative_net_assets', `Net liabi
 if (previousYear?.net_assets > 0 && latestYear.net_assets !== null && latestYear.net_assets >= 0 && latestYear.net_assets < previousYear.net_assets * 0.5) {
   flag('medium', 'net_assets_fall', `Net assets fell from ${money(previousYear.net_assets)} to ${money(latestYear.net_assets)} (${previousYear.year_end} to ${latestYear.year_end})`, filingsUrl);
 }
-if (previousYear?.employees >= MIN_HEADCOUNT_FOR_TREND && latestYear.employees !== null && latestYear.employees < previousYear.employees * 0.75) {
-  flag('medium', 'headcount_fall', `Average employees fell from ${previousYear.employees} to ${latestYear.employees} (${previousYear.year_end} to ${latestYear.year_end})`, filingsUrl);
+// Measured from the peak so cuts spread over several years still show
+const headcountPeak = accountsHistory.slice(1).reduce((peak, year) => (year.employees ?? -1) > (peak?.employees ?? -1) ? year : peak, null);
+if (headcountPeak?.employees >= MIN_HEADCOUNT_FOR_TREND && latestYear.employees !== null && latestYear.employees < headcountPeak.employees * 0.75) {
+  flag('medium', 'headcount_fall', `Average employees fell from ${headcountPeak.employees} to ${latestYear.employees} (${headcountPeak.year_end} to ${latestYear.year_end})`, filingsUrl);
 }
 
 // --- Gazette
