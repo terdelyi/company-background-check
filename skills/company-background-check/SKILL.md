@@ -90,7 +90,7 @@ Some environments block outbound API calls. The same data is on the public Compa
 
 ### What counts as a phoenix pattern
 
-A phoenix company is a new company continuing the business of one that went insolvent, usually leaving its debts behind. It is legal in some forms, but it is the pattern that most often leaves staff unpaid. Look at each director's and each individual owner's other companies that are insolvent or dissolved with insolvency history, and count the signals: similar name, same registered postcode (now or previously), same SIC code, and the target company being incorporated within about 3 years of the old one closing.
+A phoenix company is a new company continuing the business of one that went insolvent, usually leaving its debts behind. It is legal in some forms, but it is the pattern that most often leaves staff unpaid. Look at each director's and each individual owner's other companies that are insolvent or dissolved with insolvency history, and count the signals: similar name, same registered postcode (now or previously), same SIC code, and the target company being incorporated within about 3 years of the old one failing. A company fails when its insolvency case starts (a petition, a winding-up order, administration), not when it is dissolved, which can be years later.
 
 - Insolvency plus a similar name plus one more signal: **strong** (high severity).
 - Insolvency plus any one other signal: **possible** (medium).
@@ -100,7 +100,7 @@ A phoenix company is a new company continuing the business of one that went inso
 
 Companies House does not record that one company's business was merged into another. The chain of shared directors, names and addresses is the evidence: present it as that, and do not state a merger as fact unless a filing or news source confirms it.
 
-If the director resigned from the old company well before it failed, say so; it weakens the link.
+A director who left the old company more than a year before it failed did not run it into insolvency, so it is not linked to them: no phoenix rating, and it does not count towards their insolvencies. The script marks these `director_left_before_failure` and dates the failure as `insolvent_from`. In path B, check the resignation date against the Insolvency tab. List such companies in the report only as context, and say when the director left.
 
 **Trading-name check (do this by hand).** The register does not record what a company traded as, so the script cannot see that an insolvent company with an unrelated registered name sold the same product the target is now named after. For every company in `failed_companies` with the `insolvency` signal, find out what it traded as: search `<old company name> trading as`, read its Gazette notices, look for a brand page on a company-data site, and check the target's website for old terms and conditions naming a different company. If it traded under the target's name or brand, count that as a similar name and re-rate with the rules above. Say in the report that you raised the rating by hand and link the evidence.
 

@@ -9,7 +9,7 @@ const BASE = process.env.CH_API_BASE || 'https://api.company-information.service
 const DOC_BASE = process.env.CH_DOC_API_BASE || 'https://document-api.company-information.service.gov.uk';
 const SITE = 'https://find-and-update.company-information.service.gov.uk';
 const MAX_DIRECTORS = 15, MAX_PROFILE_LOOKUPS = 60, MAX_HISTORY_LOOKUPS = 40, PHOENIX_WINDOW_MONTHS = 36, CYCLE_LOOKBACK_MONTHS = 120;
-const ACCOUNTS_FILINGS = 3, MIN_HEADCOUNT_FOR_TREND = 5;
+const ACCOUNTS_FILINGS = 3, MIN_HEADCOUNT_FOR_TREND = 5, LEFT_BEFORE_FAILURE_MONTHS = 12;
 const GAZETTE_BASE = process.env.GAZETTE_BASE || 'https://www.thegazette.co.uk', GAZETTE_SITE = 'https://www.thegazette.co.uk';
 // corporate insolvency notices; 2450 is a petition to wind up
 const GAZETTE_CATEGORY = 'G205010000', PETITION_CODE = '2450', MAX_GAZETTE_NOTICES = 10, GAZETTE_LOOKBACK_MONTHS = 60, PETITION_WINDOW_MONTHS = 24;
@@ -124,6 +124,9 @@ const getGazette = path => getPublic(GAZETTE_BASE + path);
 // A members' voluntary liquidation comes with a declaration of solvency: groups use it to close
 // subsidiaries they no longer need, so it is not the insolvency the phoenix and insolvency checks look for.
 const isSolventWindUp = cases => Array.isArray(cases) && cases.length > 0 && cases.every(x => x.type === 'members-voluntary-liquidation');
+// A company can be wound up years before it is finally dissolved, so its failure dates from the first step of a case.
+const insolvencyStart = cases => (cases || []).flatMap(x => x.dates || [])
+  .filter(d => d.date && !/ended|concluded|dissolved|discharged|terminated/.test(d.type || '')).map(d => d.date).sort()[0] || null;
 
 // Register checks that matter for any company in the group: the target and each parent.
 function registerFlags(co, num, insolvency, filingItems) {
@@ -483,9 +486,14 @@ for (const o of people) {
     if (!p) continue;
     const signals = [];
     const insolvencyRecord = INSOLVENT.includes(p.company_status) || p.has_insolvency_history;
-    const solventLiquidation = insolvencyRecord && isSolventWindUp((await get(`/company/${p.company_number}/insolvency`))?.cases);
+    const cases = insolvencyRecord ? (await get(`/company/${p.company_number}/insolvency`))?.cases : null;
+    const solventLiquidation = insolvencyRecord && isSolventWindUp(cases);
     if (solventLiquidation && INSOLVENT.includes(a.appointed_to.company_status)) solventCount++;
     const wasInsolvent = insolvencyRecord && !solventLiquidation;
+    const insolventFrom = wasInsolvent ? insolvencyStart(cases) : null;
+    const failedOn = insolventFrom || p.date_of_cessation || null;
+    // someone who left well before the failure didn't run the company into it, so it isn't theirs to answer for
+    const leftBeforeFailure = Boolean(wasInsolvent && a.resigned_on && failedOn && a.resigned_on < failedOn && months(a.resigned_on, failedOn) > LEFT_BEFORE_FAILURE_MONTHS);
     const closed = insolvencyRecord || p.company_status === 'dissolved';
     const pNames = [p.company_name, ...(p.previous_company_names || []).map(x => x.name)];
     const sameName = names.some(n => pNames.some(m => similar(n, m)));
@@ -497,16 +505,17 @@ for (const o of people) {
     if (sameName) signals.push('similar name');
     if (samePostcode) signals.push(samePostcode);
     if ((p.sic_codes || []).some(s => (c.sic_codes || []).includes(s))) signals.push('same SIC code');
-    if (p.date_of_cessation && c.date_of_creation && months(p.date_of_cessation, c.date_of_creation) <= PHOENIX_WINDOW_MONTHS) signals.push(`target incorporated within ${PHOENIX_WINDOW_MONTHS} months of its closure`);
-    else if (!p.date_of_cessation && wasInsolvent && ageMonths !== null && ageMonths <= PHOENIX_WINDOW_MONTHS) signals.push('target incorporated recently while this company is insolvent');
-    const phoenix = !wasInsolvent ? null : signals.includes('similar name') && signals.length >= 3 ? 'strong' : signals.length >= 2 ? 'possible' : null;
+    if (failedOn && c.date_of_creation && months(failedOn, c.date_of_creation) <= PHOENIX_WINDOW_MONTHS) signals.push(`target incorporated within ${PHOENIX_WINDOW_MONTHS} months of its ${insolventFrom ? 'insolvency' : 'closure'}`);
+    else if (!failedOn && wasInsolvent && ageMonths !== null && ageMonths <= PHOENIX_WINDOW_MONTHS) signals.push('target incorporated recently while this company is insolvent');
+    const phoenix = !wasInsolvent || leftBeforeFailure ? null : signals.includes('similar name') && signals.length >= 3 ? 'strong' : signals.length >= 2 ? 'possible' : null;
     if (sameName || samePostcode) related.push({ name: p.company_name, number: p.company_number, status: p.company_status, incorporated: p.date_of_creation || null, ceased: p.date_of_cessation || null, closed: !!closed, insolvent: !!wasInsolvent, url: `${SITE}/company/${p.company_number}` });
     if (!closed) continue; // active companies only count towards the cycling check below
     if (!wasInsolvent && signals.length < 2) continue; // plain dissolved company, nothing to report
-    failed.push({ name: p.company_name, number: p.company_number, status: p.company_status, ceased: p.date_of_cessation || null, director_resigned_on: a.resigned_on || null, signals, phoenix, solvent_liquidation: solventLiquidation, url: `${SITE}/company/${p.company_number}` });
+    failed.push({ name: p.company_name, number: p.company_number, status: p.company_status, insolvent_from: insolventFrom, ceased: p.date_of_cessation || null,
+      director_resigned_on: a.resigned_on || null, director_left_before_failure: leftBeforeFailure, signals, phoenix, solvent_liquidation: solventLiquidation, url: `${SITE}/company/${p.company_number}` });
     if (phoenix) flag(phoenix === 'strong' ? 'high' : 'medium', `phoenix_${phoenix}`, `${o.name}: ${phoenix} phoenix pattern with ${p.company_name} (${p.company_status}) - ${signals.join(', ')}`, `${SITE}/company/${p.company_number}`);
   }
-  const insolventOnly = failed.filter(f => f.signals.includes('insolvency') && !f.phoenix);
+  const insolventOnly = failed.filter(f => f.signals.includes('insolvency') && !f.phoenix && !f.director_left_before_failure);
   if (insolventOnly.length) flag('medium', 'director_insolvencies', `${o.name}: director of ${insolventOnly.length} other compan${insolventOnly.length > 1 ? 'ies' : 'y'} with insolvency history (${insolventOnly.map(f => f.name).join(', ')})`, url);
   // serial pattern: a chain of related companies (similar name or same registered postcode) opened and closed one after another
   related.sort((x, y) => (x.incorporated || '').localeCompare(y.incorporated || ''));
