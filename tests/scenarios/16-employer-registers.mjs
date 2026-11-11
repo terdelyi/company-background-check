@@ -1,4 +1,4 @@
-import { appointment, company, companyRoutes, director, individualPsc, list } from './_helpers.mjs';
+import { appointment, company, companyRoutes, director, individualPsc, list, tribunalDecision } from './_helpers.mjs';
 
 const target = company('ZZ000016', 'PLACEHOLDER EMPLOYER LTD');
 const omegaDob = { month: 8, year: 1971 };
@@ -16,11 +16,6 @@ const SPONSOR_CSV = [
   'Placeholder Employer Holdings Ltd,Othertown,,Worker (A rating),Skilled Worker',
   '"Placeholder, Comma Ltd",Testtown,,Worker (A rating),Skilled Worker',
 ].join('\r\n');
-
-const decision = (title, date, categories) => ({
-  title, link: `/employment-tribunal-decisions/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, public_timestamp: `${date}T10:00:00Z`,
-  tribunal_decision_categories: categories, tribunal_decision_decision_date: date,
-});
 
 export default {
   description: 'Gender pay gap filings are found by company number across years, the sponsor register by exact name, and tribunal decisions only where the company is a respondent within six years',
@@ -55,13 +50,13 @@ export default {
       details: { attachments: [{ title: 'Register of Worker and Temporary Worker licensed sponsors', content_type: 'text/csv', url: '/media/zz/sponsor-register.csv' }] },
     },
     '/media/zz/sponsor-register.csv': { csv: SPONSOR_CSV },
-    '/api/search.json?q=PLACEHOLDER EMPLOYER': {
+    '/api/search.json?q="PLACEHOLDER EMPLOYER"': {
       total: 4,
       results: [
-        decision('Mr A Claimant v Placeholder Employer Ltd: 9900001/2025', '2025-09-01', ['unlawful-deduction-from-wages']),
-        decision('Ms B Claimant v Placeholder Employer Holdings Ltd: 9900002/2025', '2025-07-01', ['unfair-dismissal']),
-        decision('Mr C Claimant v Placeholder Employer Ltd: 9900003/2018', '2018-05-01', ['breach-of-contract']),
-        decision('Ms D Claimant v (1) Placeholder Employer Ltd (2) Mr E Manager: 9900004/2024', '2024-02-10', ['unfair-dismissal']),
+        tribunalDecision('Mr A Claimant v Placeholder Employer Ltd: 9900001/2025', '2025-09-01', ['unlawful-deduction-from-wages']),
+        tribunalDecision('Ms B Claimant v Placeholder Employer Holdings Ltd: 9900002/2025', '2025-07-01', ['unfair-dismissal']),
+        tribunalDecision('Mr C Claimant v Placeholder Employer Ltd: 9900003/2018', '2018-05-01', ['breach-of-contract']),
+        tribunalDecision('Ms D Claimant v (1) Placeholder Employer Ltd (2) Mr E Manager: 9900004/2024', '2024-02-10', ['unfair-dismissal']),
       ],
     },
   },

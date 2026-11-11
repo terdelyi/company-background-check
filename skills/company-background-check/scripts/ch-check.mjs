@@ -15,7 +15,7 @@ const GAZETTE_BASE = process.env.GAZETTE_BASE || 'https://www.thegazette.co.uk',
 const GAZETTE_CATEGORY = 'G205010000', PETITION_CODE = '2450', MAX_GAZETTE_NOTICES = 10, GAZETTE_LOOKBACK_MONTHS = 60, PETITION_WINDOW_MONTHS = 24;
 const GPG_BASE = process.env.GPG_BASE || 'https://gender-pay-gap.service.gov.uk', GPG_SITE = 'https://gender-pay-gap.service.gov.uk', GPG_YEARS = 4;
 const GOVUK_BASE = process.env.GOVUK_BASE || 'https://www.gov.uk', GOVUK_SITE = 'https://www.gov.uk';
-const SPONSOR_REGISTER_PAGE = '/government/publications/register-of-licensed-sponsors-workers', TRIBUNAL_LOOKBACK_MONTHS = 72;
+const SPONSOR_REGISTER_PAGE = '/government/publications/register-of-licensed-sponsors-workers', TRIBUNAL_LOOKBACK_MONTHS = 72, MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES = 10;
 const MAX_PARENT_LEVELS = 3;
 const UK_REGISTER = /england|wales|scotland|northern ireland|united kingdom|great britain|\buk\b|companies house|registrar of companies/i;
 // iXBRL concept names by local name, preferred first; older UK GAAP filings use the later ones
@@ -150,8 +150,10 @@ function registerFlags(co, num, insolvency, filingItems) {
 
 // A petition reaches the Gazette weeks before Companies House records anything.
 // Search finds notices by name; only a notice that carries the company number becomes a flag.
+const searchName = n => n.replace(/[\s,]+(limited|ltd\.?|plc|llp)$/i, '').trim();
+
 async function gazetteCheck(coNames, num) {
-  const searched = [...new Set(coNames.map(n => n.replace(/[\s,]+(limited|ltd\.?|plc|llp)$/i, '').trim()).filter(Boolean))];
+  const searched = [...new Set(coNames.map(searchName).filter(Boolean))];
   const found = new Map(), failed = [];
   for (const name of searched) {
     const results = parseJson(await getGazette(`/all-notices/notice/data.json?text=${encodeURIComponent(`"${name}"`)}&categorycode=${GAZETTE_CATEGORY}&sort-by=latest-date&results-page-size=20`));
@@ -385,24 +387,27 @@ if (sponsorCsv !== null) {
 }
 
 // Tribunal titles read "Claimant v Respondent(s): case number"; respondents may be numbered "(1) X (2) Y"
-function namesRespondent(title) {
+function namesRespondent(title, keys) {
   const respondents = (title || '').replace(/:[^:]*$/, '').split(/\s+v\.?\s+/i).slice(1).join(' v ');
   const parties = [respondents, ...respondents.replace(/\(\d+\)/g, ',').split(/,|\s+and\s+|\s*&\s*/i)].map(orgKey);
-  return parties.some(p => nameKeys.has(p));
+  return parties.some(p => keys.has(p));
 }
-const tribunalDecisions = new Map();
-let tribunalSearchFailed = false;
-for (const name of gazetteNames) {
+async function searchTribunals(searchNames, keys, lookbackMonths = Infinity) {
+  const decisions = new Map(), failed = [];
   const fields = ['title', 'link', 'public_timestamp', 'tribunal_decision_categories', 'tribunal_decision_decision_date'].map(f => `&fields=${f}`).join('');
-  const found = parseJson(await getPublic(`${GOVUK_BASE}/api/search.json?filter_format=employment_tribunal_decision&q=${encodeURIComponent(name)}&count=50${fields}`));
-  if (!found) { tribunalSearchFailed = true; continue; }
-  for (const d of found.results || []) {
-    const decided = d.tribunal_decision_decision_date || d.public_timestamp?.slice(0, 10);
-    if (!d.link || tribunalDecisions.has(d.link) || !decided || monthsAgo(decided) > TRIBUNAL_LOOKBACK_MONTHS || !namesRespondent(d.title)) continue;
-    tribunalDecisions.set(d.link, { title: d.title, decision_date: decided, categories: d.tribunal_decision_categories || [], url: GOVUK_SITE + d.link });
+  for (const name of searchNames) {
+    const found = parseJson(await getPublic(`${GOVUK_BASE}/api/search.json?filter_format=employment_tribunal_decision&q=${encodeURIComponent(`"${name}"`)}&count=50${fields}`));
+    if (!found) { failed.push(name); continue; }
+    for (const d of found.results || []) {
+      const decided = d.tribunal_decision_decision_date || d.public_timestamp?.slice(0, 10);
+      if (!d.link || decisions.has(d.link) || !decided || monthsAgo(decided) > lookbackMonths || !namesRespondent(d.title, keys)) continue;
+      decisions.set(d.link, { title: d.title, decision_date: decided, categories: d.tribunal_decision_categories || [], url: GOVUK_SITE + d.link });
+    }
   }
+  return { decisions: [...decisions.values()].sort((a, b) => b.decision_date.localeCompare(a.decision_date)), failed };
 }
-const tribunals = [...tribunalDecisions.values()].sort((a, b) => b.decision_date.localeCompare(a.decision_date));
+const targetTribunals = await searchTribunals(gazetteNames, nameKeys, TRIBUNAL_LOOKBACK_MONTHS);
+const tribunals = targetTribunals.decisions, tribunalSearchFailed = targetTribunals.failed.length > 0;
 if (tribunals.length) {
   flag('low', 'tribunal_decisions', `${tribunals.length} employment tribunal decision${tribunals.length > 1 ? 's' : ''} since ${tribunals.at(-1).decision_date} name the company as respondent; read them for the outcome`, tribunals[0].url);
 }
@@ -542,6 +547,30 @@ for (const o of people) {
   directors.push({ name: o.name, role: o.officer_role, appointed_on: o.appointed_on || null, total_appointments: items.length, officer_records: o.paths.length, other_active: others.filter(a => status(a) === 'active' && !a.resigned_on).length, dissolved: dissolved.length, insolvent_now: insolvent.length - solventCount, solvent_liquidations: solventCount, failed_companies: failed, related_companies: related, disqualification, url });
 }
 
+// Staff left unpaid when a director's earlier company failed show up as tribunal claims against it, often years later
+const linkedFailures = new Map();
+for (const d of directors) {
+  for (const f of d.failed_companies.filter(f => f.signals.includes('insolvency') && !f.director_left_before_failure)) {
+    const linked = linkedFailures.get(f.number) || { name: f.name, number: f.number, insolventFrom: f.insolvent_from, directors: [], entries: [] };
+    linked.directors.push(d.name);
+    linked.entries.push(f);
+    linkedFailures.set(f.number, linked);
+  }
+}
+const phoenixRank = linked => linked.entries.some(f => f.phoenix === 'strong') ? 0 : linked.entries.some(f => f.phoenix) ? 1 : 2;
+const failedToSearch = [...linkedFailures.values()].sort((a, b) => phoenixRank(a) - phoenixRank(b) || (b.insolventFrom || '').localeCompare(a.insolventFrom || ''));
+const failedCompanyTribunals = { searched: [], failed_searches: [], not_searched: failedToSearch.slice(MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES).map(l => l.name) };
+for (const linked of failedToSearch.slice(0, MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES)) {
+  const coNames = [linked.name, ...((await profile(linked.number))?.previous_company_names || []).map(x => x.name)];
+  const { decisions, failed } = await searchTribunals([...new Set(coNames.map(searchName))], new Set(coNames.map(orgKey)));
+  if (failed.length) { failedCompanyTribunals.failed_searches.push(linked.name); continue; }
+  failedCompanyTribunals.searched.push(linked.number);
+  for (const f of linked.entries) f.tribunal_decisions = decisions;
+  if (decisions.length) {
+    flag('low', 'failed_company_tribunals', `${linked.name}, a failed company of ${linked.directors.join(' and ')}: ${decisions.length} employment tribunal decision${decisions.length > 1 ? 's name' : ' names'} it as respondent; read them for unpaid pay`, decisions[0].url);
+  }
+}
+
 const pscs = (psc?.items || []).filter(p => !p.ceased_on).map(p => ({ name: p.name, kind: (p.kind || '').replace(/-person-with-significant-control$/, ''), control: p.natures_of_control || [] }));
 if (!pscs.length) flag('info', 'no_psc', 'No active person with significant control on record', `${SITE}/company/${number}/persons-with-significant-control`);
 
@@ -563,7 +592,7 @@ console.log(JSON.stringify({
     active_directors: activeDirs.length, resigned_last_12_months: recentResignations.length, url: `${SITE}/company/${number}`,
   },
   directors, pscs, flags,
-  meta: { requests, directors_not_checked: Math.max(0, activeDirs.length - MAX_DIRECTORS), people_without_officer_record: people.filter(p => !p.paths.length).map(p => p.name), company_lookups_skipped: skippedLookups, gazette_name_only: gazette.name_only, parents_not_followed: parentsNotFollowed,
+  meta: { requests, directors_not_checked: Math.max(0, activeDirs.length - MAX_DIRECTORS), people_without_officer_record: people.filter(p => !p.paths.length).map(p => p.name), company_lookups_skipped: skippedLookups, gazette_name_only: gazette.name_only, parents_not_followed: parentsNotFollowed, failed_company_tribunals: failedCompanyTribunals,
     caveats: ['Companies House often holds several officer records for one person, so appointment histories can be incomplete.', 'Name-based matches (similar names, disqualification hits) are leads to verify, not findings.',
       'Accounts figures are read from iXBRL tags only; a year marked "pdf" or "unavailable" has to be read by hand.',
       `Gazette notices from the last ${GAZETTE_LOOKBACK_MONTHS / 12} years are flagged only when they carry the company number; gazette_name_only lists the rest to check by hand.`,

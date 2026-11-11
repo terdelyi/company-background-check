@@ -116,3 +116,8 @@ export const companyRoutes = (c, { officers = [], pscs = [], filings = [], insol
   ...(insolvency && { [`/company/${c.company_number}/insolvency`]: insolvency }),
   ...(charges && { [`/company/${c.company_number}/charges`]: charges }),
 });
+
+export const tribunalDecision = (title, date, categories) => ({
+  title, link: `/employment-tribunal-decisions/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, public_timestamp: `${date}T10:00:00Z`,
+  tribunal_decision_categories: categories, tribunal_decision_decision_date: date,
+});
