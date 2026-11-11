@@ -233,13 +233,15 @@ function similar(a, b) {
   return run >= 6 && run / Math.min(ca.length, cb.length) >= 0.7;
 }
 
+const canonName = s => s.toLowerCase().replace(/\bltd\b/g, 'limited').replace(/[^a-z0-9]/g, '');
+const bareName = s => canonName(s).replace(/(limited|plc|llp)$/, ''); // same name, give or take the legal suffix
+const searchCompanies = async q => (await get(`/search/companies?q=${encodeURIComponent(q)}&items_per_page=5`))?.items || [];
+
 async function resolve(q) {
   if (/^([A-Z]{2}\d{6}|\d{8})$/i.test(q.trim())) return q.trim().toUpperCase();
-  const items = (await get(`/search/companies?q=${encodeURIComponent(q)}&items_per_page=5`))?.items || [];
-  const canon = s => s.toLowerCase().replace(/\bltd\b/g, 'limited').replace(/[^a-z0-9]/g, '');
-  const exact = items.filter(i => canon(i.title) === canon(q));
-  const bare = s => canon(s).replace(/(limited|plc|llp)$/, ''); // same name, give or take the legal suffix
-  const loose = items.filter(i => bare(i.title) === bare(q));
+  const items = await searchCompanies(q);
+  const exact = items.filter(i => canonName(i.title) === canonName(q));
+  const loose = items.filter(i => bareName(i.title) === bareName(q));
   const pick = exact.length === 1 ? exact[0] : loose.length === 1 ? loose[0] : items.length === 1 ? items[0] : null;
   if (pick) return pick.company_number;
   console.log(JSON.stringify({ ambiguous: true, candidates: items.map(i => ({ number: i.company_number, name: i.title, status: i.company_status, incorporated: i.date_of_creation, address: i.address_snippet })) }, null, 2));
@@ -315,10 +317,17 @@ const parentQueue = [{ items: psc?.items, level: 1, ownerOf: c.company_name }];
 while (parentQueue.length) {
   const { items, level, ownerOf } = parentQueue.shift();
   for (const owner of (items || []).filter(p => !p.ceased_on && (p.kind || '').startsWith('corporate-entity'))) {
-    const ident = owner.identification || {}, register = ident.country_registered || ident.place_registered;
-    const parentNumber = companyNumberKey(ident.registration_number);
+    const ident = owner.identification || {}, register = ident.country_registered || ident.place_registered || ident.legal_authority;
+    let parentNumber = companyNumberKey(ident.registration_number), matchedBy;
     const notFollowed = reason => parentsNotFollowed.push({ name: owner.name, owner_of: ownerOf, reason });
     if (!UK_REGISTER.test(register || '')) { notFollowed(register ? `registered in ${register}` : 'register not stated'); continue; }
+    // UK owners are often recorded without a number. Live UK companies can't share a name, so an exact match is the owner.
+    if (!parentNumber) {
+      const matches = (await searchCompanies(owner.name)).filter(i => i.company_status !== 'dissolved' && bareName(i.title) === bareName(owner.name));
+      if (matches.length !== 1) { notFollowed(`no company number given, and ${matches.length} companies match the name`); continue; }
+      parentNumber = matches[0].company_number;
+      matchedBy = 'name';
+    }
     if (!/^([A-Z]{2}\d{6}|\d{8})$/.test(parentNumber)) { notFollowed('no UK company number given'); continue; }
     if (seenInGroup.has(parentNumber)) continue;
     if (level > MAX_PARENT_LEVELS) { notFollowed(`more than ${MAX_PARENT_LEVELS} levels up`); continue; }
@@ -333,7 +342,7 @@ while (parentQueue.length) {
     const parentGazette = await gazetteCheck([parent.company_name, ...(parent.previous_company_names || []).map(x => x.name)], parentNumber);
     const parentFlags = [...registerFlags(parent, parentNumber, parentInsolvency, parentFilings?.items), ...parentGazette.flags];
     for (const f of parentFlags) flag(f.severity, `parent_${f.code}`, `Parent ${parent.company_name}: ${f.text}`, f.url);
-    parents.push({ level, name: parent.company_name, number: parentNumber, status: parent.company_status, owner_of: ownerOf, control: owner.natures_of_control || [],
+    parents.push({ level, name: parent.company_name, number: parentNumber, ...(matchedBy && { matched_by: matchedBy }), status: parent.company_status, owner_of: ownerOf, control: owner.natures_of_control || [],
       flags: parentFlags.map(f => f.code), gazette_name_only: parentGazette.name_only, url: `${SITE}/company/${parentNumber}` });
     parentQueue.push({ items: parentPsc?.items, level: level + 1, ownerOf: parent.company_name });
   }
