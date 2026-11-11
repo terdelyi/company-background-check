@@ -1,4 +1,8 @@
+<p align="center"><img src=".github/logo.png" alt="" width="160"></p>
+
 # company-background-check
+
+[![skills.sh](https://skills.sh/b/terdelyi/company-background-check)](https://skills.sh/terdelyi/company-background-check)
 
 A Claude skill that runs a background check on a UK company from the point of view of someone who works there, or is thinking about it. Give it a company name or number and it produces a printable HTML report with a risk rating and scorecard at the top and the evidence underneath.
 
