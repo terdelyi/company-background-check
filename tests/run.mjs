@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs scripts/ch-check.mjs against every scenario and compares the result with its expectations.
+// Runs skills/company-background-check/scripts/ch-check.mjs against every scenario and compares the result with its expectations.
 // Usage: node tests/run.mjs [name filter]
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ const FAKE_NOW = '2026-06-01T12:00:00Z';
 const EVIDENCE_SITES = ['https://find-and-update.company-information.service.gov.uk/', 'https://www.thegazette.co.uk/notice/',
   'https://www.gov.uk/employment-tribunal-decisions/',
 ];
-const script = fileURLToPath(new URL('../scripts/ch-check.mjs', import.meta.url));
+const script = fileURLToPath(new URL('../skills/company-background-check/scripts/ch-check.mjs', import.meta.url));
 const freezeTime = new URL('./freeze-time.mjs', import.meta.url).href;
 
 function runScript(args, env) {
