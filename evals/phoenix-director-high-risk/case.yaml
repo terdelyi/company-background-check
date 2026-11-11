@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: phoenix-director-high-risk
+expected_outcome: |
+  The script reports a strong phoenix pattern: the director also runs Placeholder Widgets
+  Trading Ltd (ZZ100003), which is in liquidation and shares the name, SIC code and an
+  earlier registered office. The report rates the company High, shows the flag as a Concern
+  under People and phoenix check, and names the companies in the phoenix callout with linked
+  evidence, without adding personal details about the director.

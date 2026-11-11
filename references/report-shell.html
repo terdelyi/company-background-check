@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Background check: {Company name}</title>
+<style>
+  :root {
+    --ink: #18212f; --muted: #586174; --rule: #d5dae1; --paper: #fff; --desk: #e9edf2;
+    --high: #b42318; --high-tint: #fdecea;
+    --medium: #9a5b00; --medium-fill: #f2a900; --medium-tint: #fef3dc;
+    --low: #1f7a4d; --low-tint: #e6f4ec;
+    --none: #667085; --none-tint: #f0f2f5;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { margin: 0; background: var(--desk); color: var(--ink); font-family: var(--sans); line-height: 1.55; }
+  .sheet { max-width: 860px; margin: 32px auto; padding: 56px 60px 40px; background: var(--paper); box-shadow: 0 1px 2px rgba(24,33,47,.08), 0 12px 40px rgba(24,33,47,.10); }
+  a { color: #1d4f91; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid #1d4f91; outline-offset: 2px; }
+  p { margin: 0 0 .7em; }
+
+  .doc-type { margin: 0; color: var(--muted); font-size: .93rem; }
+  h1 { margin: .1em 0 .45em; font-family: var(--serif); font-weight: 600; font-size: 2.9rem; line-height: 1.08; letter-spacing: -.01em; }
+  .meta { display: grid; grid-template-columns: repeat(4, auto); justify-content: start; gap: 4px 36px; margin: 0 0 28px; }
+  .meta dt { color: var(--muted); font-size: .8rem; }
+  .meta dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .verdict { display: grid; grid-template-columns: 250px 1fr; border-radius: 6px; overflow: hidden; border: 1px solid var(--rule); }
+  .verdict__rating { padding: 22px 26px 20px; color: #fff; }
+  .verdict__rating p { margin: 0; font-size: .87rem; opacity: .9; }
+  .verdict__rating strong { display: block; font-family: var(--serif); font-weight: 600; font-size: 3.6rem; line-height: 1; margin: 2px 0 14px; }
+  .scale { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; font-size: .73rem; }
+  .scale li { padding: 3px 0; text-align: center; border-radius: 2px; background: rgba(255,255,255,.22); color: rgba(255,255,255,.85); }
+  .scale li[aria-current="true"] { background: #fff; font-weight: 700; }
+  .verdict__reason { padding: 22px 26px; display: flex; flex-direction: column; justify-content: center; font-size: 1.07rem; line-height: 1.45; }
+  .verdict__reason p:last-child { margin: 0; }
+  .verdict__reason .small { font-size: .87rem; color: var(--muted); }
+  .verdict--high .verdict__rating { background: var(--high); }
+  .verdict--high .scale li[aria-current="true"] { color: var(--high); }
+  .verdict--high .verdict__reason { background: var(--high-tint); }
+  .verdict--medium .verdict__rating { background: var(--medium); }
+  .verdict--medium .scale li[aria-current="true"] { color: var(--medium); }
+  .verdict--medium .verdict__reason { background: var(--medium-tint); }
+  .verdict--low .verdict__rating { background: var(--low); }
+  .verdict--low .scale li[aria-current="true"] { color: var(--low); }
+  .verdict--low .verdict__reason { background: var(--low-tint); }
+
+  .areas { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(4, auto); grid-auto-flow: column; gap: 0 28px; margin: 18px 0 6px; padding: 0; list-style: none; }
+  .area { display: grid; grid-template-columns: 1fr auto; align-content: start; gap: 2px 12px; padding: 10px 0 10px 14px; border-bottom: 1px solid var(--rule); border-left: 6px solid var(--none); }
+  .area h3 { margin: 0; font-size: 1rem; font-weight: 650; }
+  .area p { grid-column: 1 / -1; margin: 0; font-size: .9rem; color: #36404f; }
+  .status, .chip { display: inline-block; align-self: start; padding: 1px 9px; border-radius: 999px; font-size: .8rem; font-weight: 650; white-space: nowrap; }
+  .area--concern { border-left-color: var(--high); }
+  .area--caution { border-left-color: var(--medium-fill); }
+  .area--clear { border-left-color: var(--low); }
+  .area--nodata { border-left-color: #b8bfca; }
+  .area--concern .status, .chip--high, .chip--negative { background: var(--high-tint); color: var(--high); }
+  .area--caution .status, .chip--medium { background: var(--medium-tint); color: var(--medium); }
+  .area--clear .status, .chip--positive { background: var(--low-tint); color: var(--low); }
+  .area--nodata .status, .chip--low, .chip--info, .chip--neutral { background: var(--none-tint); color: var(--none); }
+  .key { margin: 8px 0 0; font-size: .8rem; color: var(--muted); }
+
+  h2 { margin: 44px 0 10px; padding-top: 14px; border-top: 2px solid var(--ink); font-family: var(--serif); font-weight: 600; font-size: 1.55rem; line-height: 1.2; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .93rem; }
+  th, td { padding: 8px 12px 8px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
+  th:last-child, td:last-child { padding-right: 0; }
+  thead th { font-size: .8rem; font-weight: 600; color: var(--muted); border-bottom-color: var(--ink); }
+  tbody th { font-weight: 600; width: 13.5em; }
+  .nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .num { text-align: right; }
+  .subhead { margin: 26px 0 6px; font-size: 1rem; font-weight: 650; }
+  .callout { margin: 16px 0 0; padding: 14px 18px; border-left: 6px solid var(--high); background: var(--high-tint); }
+  .callout--none { border-left-color: var(--low); background: var(--low-tint); }
+  .callout h3 { margin: 0 0 4px; font-size: 1rem; }
+  .callout ul { margin: 6px 0 8px; padding-left: 1.2em; }
+  .callout p:last-child { margin: 0; }
+  .plain-list { margin: 0; padding-left: 1.2em; }
+  .plain-list li { margin-bottom: .45em; }
+  .note { color: var(--muted); font-size: .9rem; }
+  .table-wrap + .note { margin-top: 10px; }
+  .sources { columns: 2; column-gap: 32px; margin: 0; padding-left: 1.2em; font-size: .9rem; }
+  .sources li { break-inside: avoid; margin-bottom: .3em; }
+  .disclaimer { margin-top: 44px; padding-top: 12px; border-top: 1px solid var(--rule); color: var(--muted); font-size: .8rem; line-height: 1.5; }
+
+  @media (max-width: 700px) {
+    .sheet { margin: 0; padding: 28px 18px; box-shadow: none; }
+    h1 { font-size: 2.1rem; }
+    .meta { grid-template-columns: 1fr 1fr; gap: 10px 20px; }
+    .verdict { grid-template-columns: 1fr; }
+    .areas { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; }
+    .sources { columns: 1; }
+    table { min-width: 560px; }
+  }
+
+  @page { size: A4; margin: 14mm 14mm 16mm; }
+  @media print {
+    html { font-size: 9.25pt; }
+    body { background: #fff; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet { max-width: none; margin: 0; padding: 0; box-shadow: none; }
+    h1 { font-size: 26pt; }
+    h2 { margin-top: 18pt; break-after: avoid; }
+    tr, .area, .verdict, .callout, .plain-list li { break-inside: avoid; }
+    thead { display: table-header-group; }
+    .table-wrap { overflow: visible; }
+    a { color: inherit; }
+    .sources { columns: 1; }
+    .sources a::after { content: " " attr(href); color: var(--muted); font-size: .85em; word-break: break-all; }
+    .disclaimer { margin-top: 18pt; break-before: avoid; break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main class="sheet">
+
+  <header>
+    <p class="doc-type">Employer background check</p>
+    <h1>{Company name}</h1>
+    <dl class="meta">
+      <div><dt>Company number</dt><dd>{number or n/a}</dd></div>
+      <div><dt>Jurisdiction</dt><dd>{jurisdiction}</dd></div>
+      <div><dt>Trades as</dt><dd>{brand names, or "Same name"}</dd></div>
+      <div><dt>Checked on</dt><dd>{YYYY-MM-DD}</dd></div>
+    </dl>
+  </header>
+
+  <section aria-label="Summary">
+    <!-- class: verdict--high, verdict--medium or verdict--low. Put aria-current="true" on the matching scale item. -->
+    <div class="verdict verdict--{high|medium|low}">
+      <div class="verdict__rating">
+        <p>Overall risk</p>
+        <strong>{High|Medium|Low}</strong>
+        <ol class="scale" aria-label="Risk scale"><li>Low</li><li>Medium</li><li>High</li></ol>
+      </div>
+      <div class="verdict__reason">
+        <p>{One sentence giving the main reason for the rating.}</p>
+        <p class="small">{One sentence of context: what this does and does not mean.}</p>
+      </div>
+    </div>
+    <!-- Always these eight areas in this order. class: area--concern, area--caution, area--clear or area--nodata. -->
+    <ul class="areas">
+      <li class="area area--{status}"><h3>Company record</h3><span class="status">{Concern|Caution|Clear|No data}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>People and phoenix check</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>Money</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>Redundancies</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>Legal and insolvency notices</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>Media coverage</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>Employee reviews</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>Coverage of this check</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+    </ul>
+    <p class="key">Concern: a high-severity finding. Caution: a medium one, or a gap that matters. Clear: checked, nothing adverse. No data: nothing to judge from.</p>
+  </section>
+
+  <section>
+    <h2>Red flags</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Severity</th><th>Flag</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <!-- chip class: chip--high, chip--medium, chip--low or chip--info -->
+        <tr><td><span class="chip chip--{severity}">{Severity}</span></td><td><strong>{Short name.}</strong> {What was found.}</td><td><a href="{url}">{source}</a></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Company record</h2>
+    <div class="table-wrap"><table><tbody>
+      <tr><th scope="row">{Field}</th><td>{Value}</td></tr>
+    </tbody></table></div>
+    <h3 class="subhead">Financials</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Year end</th><th class="num">Net assets</th><th class="num">Cash</th><th class="num">Avg employees</th><th class="num">Turnover</th><th>Format</th></tr></thead>
+      <!-- Newest first, up to three years. "n/a" where a figure was not tagged or stated. Format: iXBRL, PDF (read by hand) or Unavailable. -->
+      <tbody><tr><td class="nowrap">{YYYY-MM-DD}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{n}</td><td class="nowrap num">{£}</td><td>{Format}</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Directors and owners</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Name</th><th>Role</th><th>Since</th><th>Other appointments</th><th>Dissolved</th><th>Insolvent</th><th>Notes</th></tr></thead>
+      <tbody><tr><td class="nowrap">{Name}</td><td>{Role}</td><td class="nowrap">{Date}</td><td>{n}</td><td>{n}</td><td>{n}</td><td>{Notes}</td></tr></tbody>
+    </table></div>
+    <p class="note"><strong>Owners (PSCs):</strong> {names and level of control}</p>
+    <p class="note"><strong>Group:</strong> {UK parents in order up the chain, each with its status and any finding, or "No corporate owner". Owners not followed and why.}</p>
+    <!-- Add class callout--none when nothing was found. -->
+    <div class="callout">
+      <h3>Phoenix check: {none found|possible|strong|serial}</h3>
+      <p>{One sentence naming the companies, in date order with their years.}</p>
+      <ul><li><strong>{Signal.}</strong> {Evidence, linked.}</li></ul>
+    </div>
+  </section>
+
+  <!-- Funding and investment, Redundancies and layoffs, Media coverage, Employee reviews: same pattern, with the columns from the outline.
+       Media tone chips: chip--positive, chip--neutral, chip--negative. An empty section is <p>Nothing found.</p> -->
+
+  <section>
+    <h2>Web and LinkedIn presence</h2>
+    <!-- Always these five items in this order: Website, LinkedIn, Hiring, Size (gender pay gap), Visa sponsor. -->
+    <ul class="plain-list"><li><strong>{Website|LinkedIn|Hiring|Size (gender pay gap)|Visa sponsor}:</strong> {What was found.}</li></ul>
+  </section>
+
+  <section>
+    <h2>Verify next</h2>
+    <p class="note">The checks that would most change this picture, most useful first.</p>
+    <ol class="plain-list"><li><strong>{Action.}</strong> {Why it matters, with a link to where to do it.}</li></ol>
+  </section>
+
+  <section>
+    <h2>Not checked and limits</h2>
+    <ul class="plain-list"><li><strong>{Label.}</strong> {What was not checked and why.}</li></ul>
+  </section>
+
+  <section>
+    <h2>Sources</h2>
+    <ul class="sources"><li><a href="{url}">{title}</a></li></ul>
+  </section>
+
+  <footer class="disclaimer">
+    <p>This report was put together by an AI assistant from public sources on {YYYY-MM-DD}. It tries hard to get things right and links its evidence, but it can miss things or get them wrong, and matches made on names are leads, not findings. Check anything important at the source before you act on it. It is not legal or financial advice.</p>
+  </footer>
+
+</main>
+</body>
+</html>

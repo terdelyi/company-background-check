@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: ambiguous-name-asks-first
+expected_outcome: |
+  The name matches three companies (North, South and East). The skill asks the user which
+  one they mean, listing each with its company number, and stops there without writing a
+  report or guessing.

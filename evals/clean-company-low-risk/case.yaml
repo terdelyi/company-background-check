@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: clean-company-low-risk
+expected_outcome: |
+  The skill runs the bundled Companies House script against the mock API, finds no flags,
+  and writes a self-contained HTML report with the fixed eleven sections and eight scorecard
+  areas. The overall risk is Low. Web research finds nothing about this fictional company,
+  so those sections say "Nothing found." and review ratings are not invented.

@@ -1,0 +1,545 @@
+#!/usr/bin/env node
+// Companies House background check. Node 18+, no dependencies.
+// Usage: COMPANIES_HOUSE_API_KEY=... node ch-check.mjs "<company number or name>" [--aka "Brand, Product name"]
+// Exit: 0 = JSON report on stdout | 2 = no key / API unreachable | 3 = ambiguous name (candidates on stdout)
+const KEY = process.env.COMPANIES_HOUSE_API_KEY;
+const BASE = process.env.CH_API_BASE || 'https://api.company-information.service.gov.uk';
+const DOC_BASE = process.env.CH_DOC_API_BASE || 'https://document-api.company-information.service.gov.uk';
+const SITE = 'https://find-and-update.company-information.service.gov.uk';
+const MAX_DIRECTORS = 15, MAX_PROFILE_LOOKUPS = 60, MAX_HISTORY_LOOKUPS = 40, PHOENIX_WINDOW_MONTHS = 36, CYCLE_LOOKBACK_MONTHS = 120;
+const ACCOUNTS_FILINGS = 3, MIN_HEADCOUNT_FOR_TREND = 5;
+const GAZETTE_BASE = process.env.GAZETTE_BASE || 'https://www.thegazette.co.uk', GAZETTE_SITE = 'https://www.thegazette.co.uk';
+// corporate insolvency notices; 2450 is a petition to wind up
+const GAZETTE_CATEGORY = 'G205010000', PETITION_CODE = '2450', MAX_GAZETTE_NOTICES = 10, GAZETTE_LOOKBACK_MONTHS = 60, PETITION_WINDOW_MONTHS = 24;
+const GPG_BASE = process.env.GPG_BASE || 'https://gender-pay-gap.service.gov.uk', GPG_SITE = 'https://gender-pay-gap.service.gov.uk', GPG_YEARS = 4;
+const GOVUK_BASE = process.env.GOVUK_BASE || 'https://www.gov.uk', GOVUK_SITE = 'https://www.gov.uk';
+const SPONSOR_REGISTER_PAGE = '/government/publications/register-of-licensed-sponsors-workers', TRIBUNAL_LOOKBACK_MONTHS = 72;
+const MAX_PARENT_LEVELS = 3;
+const UK_REGISTER = /england|wales|scotland|northern ireland|united kingdom|great britain|\buk\b|companies house|registrar of companies/i;
+// iXBRL concept names by local name, preferred first; older UK GAAP filings use the later ones
+const ACCOUNT_CONCEPTS = {
+  net_assets: ['NetAssetsLiabilities', 'NetAssetsLiabilitiesIncludingPensionAssetLiability', 'Equity', 'ShareholderFunds'],
+  cash: ['CashBankOnHand', 'CashBankInHand'],
+  employees: ['AverageNumberEmployeesDuringPeriod', 'EmployeesTotal'],
+  turnover: ['TurnoverRevenue', 'TurnoverGrossOperatingRevenue', 'Turnover'],
+};
+const INSOLVENT = ['liquidation', 'administration', 'receivership', 'insolvency-proceedings', 'voluntary-arrangement'];
+const STOP = new Set(['ltd', 'limited', 'plc', 'llp', 'the', 'and', 'company', 'group', 'holdings', 'services', 'solutions', 'international', 'global',
+  'software', 'systems', 'technology', 'technologies', 'digital', 'consulting', 'consultancy', 'trading', 'management', 'enterprises', 'associates', 'partners']);
+
+let requests = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const fail = (code, msg) => { console.error(msg); process.exit(code); };
+
+const auth = () => ({ Authorization: 'Basic ' + Buffer.from(KEY + ':').toString('base64') });
+
+async function get(path, attempt = 0) {
+  requests++;
+  let res;
+  try {
+    res = await fetch(BASE + path, { headers: auth() });
+  } catch (e) { fail(2, `API unreachable: ${e.cause?.code || e.message}`); }
+  if (res.status === 404) return null;
+  if (res.status === 429 && attempt < 5) { await sleep(Number(process.env.CH_RETRY_MS || 60000)); return get(path, attempt + 1); }
+  if (!res.ok) fail(2, `API error ${res.status} on ${path}`);
+  return res.json();
+}
+
+// Document API failures only cost the accounts figures, so they return null instead of ending the run.
+async function getDocument(url, accept) {
+  requests++;
+  try {
+    let res = await fetch(url, { headers: { ...auth(), Accept: accept }, redirect: 'manual' });
+    // content redirects to a signed storage URL that rejects a second auth header
+    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) res = await fetch(new URL(res.headers.get('location'), url), { headers: { Accept: accept } });
+    if (!res.ok) return null;
+    return accept === 'application/json' ? await res.json() : await res.text();
+  } catch { return null; }
+}
+
+async function accountsDocument(metadataUrl) {
+  const docPath = new URL(metadataUrl, DOC_BASE).pathname;
+  const meta = await getDocument(DOC_BASE + docPath, 'application/json');
+  const types = Object.keys(meta?.resources || {});
+  if (!types.includes('application/xhtml+xml')) return { format: types.includes('application/pdf') ? 'pdf' : 'unavailable' };
+  const text = await getDocument(`${DOC_BASE}${docPath}/content`, 'application/xhtml+xml');
+  return text ? { format: 'ixbrl', text } : { format: 'unavailable' };
+}
+
+function ixNumber(raw, format = '', scale = '0', sign) {
+  const text = raw.replace(/<[^>]+>/g, '').trim();
+  if (/zero/i.test(format) || /^[-–—]$/.test(text)) return 0;
+  const decimalComma = /comma-?decimal/i.test(format);
+  const digits = text.replace(decimalComma ? /[^\d,]/g : /[^\d.]/g, '').replace(',', '.');
+  if (!digits) return null;
+  const n = Number(digits) * 10 ** Number(scale || 0);
+  return sign === '-' ? -n : n;
+}
+
+// { 'YYYY-MM-DD period end': { net_assets, cash, employees, turnover } } from entity-level facts only
+function parseIxbrl(doc) {
+  const periodEnd = new Map();
+  for (const m of doc.matchAll(/<(?:[\w-]+:)?context\b[^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/(?:[\w-]+:)?context>/g)) {
+    if (/<(?:[\w-]+:)?segment\b/.test(m[2])) continue; // dimensional breakdowns, not company totals
+    const end = m[2].match(/<(?:[\w-]+:)?(?:instant|endDate)>\s*([\d-]+)\s*</);
+    if (end) periodEnd.set(m[1], end[1]);
+  }
+  const periods = new Map(), ranks = new Map();
+  for (const m of doc.matchAll(/<ix:nonFraction\b([^>]*)>([\s\S]*?)<\/ix:nonFraction>/g)) {
+    const attr = name => m[1].match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+    const local = (attr('name') || '').split(':').pop();
+    const field = Object.keys(ACCOUNT_CONCEPTS).find(f => ACCOUNT_CONCEPTS[f].includes(local));
+    const end = periodEnd.get(attr('contextRef'));
+    let value = field && end ? ixNumber(m[2], attr('format'), attr('scale'), attr('sign')) : null;
+    if (value === null) continue;
+    // some filing software puts sign="-" on the headcount, which can never be negative
+    if (field === 'employees') value = Math.abs(value);
+    const rank = ACCOUNT_CONCEPTS[field].indexOf(local), key = `${end} ${field}`;
+    if (ranks.has(key) && ranks.get(key) <= rank) continue;
+    ranks.set(key, rank);
+    periods.set(end, { ...periods.get(end), [field]: value });
+  }
+  return periods;
+}
+
+// Clean audit reports say they found no material uncertainty, so a negated sentence does not count.
+function reportsGoingConcernDoubt(doc) {
+  const text = doc.replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/\s+/g, ' ');
+  return text.split(/(?<=[.!?])\s+/).some(s => /material uncertaint/i.test(s) && /going concern/i.test(s) && !/\b(no|not|any)\b[^.]*material uncertaint/i.test(s));
+}
+const money = n => `${n < 0 ? '-' : ''}£${Math.abs(n).toLocaleString('en-GB')}`;
+
+// The Gazette and gov.uk registers are separate services: a failure only loses that check, never the run.
+async function getPublic(url, accept = 'application/json') {
+  requests++;
+  try {
+    const res = await fetch(url, { headers: { Accept: accept } });
+    return res.ok ? await res.text() : null;
+  } catch { return null; }
+}
+const getGazette = path => getPublic(GAZETTE_BASE + path);
+
+// A members' voluntary liquidation comes with a declaration of solvency: groups use it to close
+// subsidiaries they no longer need, so it is not the insolvency the phoenix and insolvency checks look for.
+const isSolventWindUp = cases => Array.isArray(cases) && cases.length > 0 && cases.every(x => x.type === 'members-voluntary-liquidation');
+
+// Register checks that matter for any company in the group: the target and each parent.
+function registerFlags(co, num, insolvency, filingItems) {
+  const out = [], add = (severity, code, text, url = `${SITE}/company/${num}`) => out.push({ severity, code, text, url });
+  const filingsUrl = `${SITE}/company/${num}/filing-history`;
+  const solvent = isSolventWindUp(insolvency?.cases);
+  if (co.company_status !== 'active') add('high', 'status', `Company status is "${co.company_status}"${solvent ? ' (members\' voluntary liquidation: a solvent wind-up, the company is still closing)' : ''}`);
+  if (co.accounts?.overdue) add('high', 'accounts_overdue', `Accounts overdue (were due ${co.accounts.next_due || 'unknown'})`);
+  if (co.confirmation_statement?.overdue) add('medium', 'confirmation_overdue', `Confirmation statement overdue (was due ${co.confirmation_statement.next_due || 'unknown'})`);
+  if (!solvent && (co.has_insolvency_history || insolvency?.cases?.length)) add('high', 'insolvency', `Insolvency history: ${(insolvency?.cases || []).map(x => x.type).join(', ') || 'yes'}`, `${SITE}/company/${num}/insolvency`);
+  if (co.registered_office_is_in_dispute) add('high', 'office_disputed', 'Registered office address is in dispute');
+  if (co.undeliverable_registered_office_address) add('high', 'office_undeliverable', 'Registered office address is undeliverable');
+  for (const f of (filingItems || []).filter(f => f.date && monthsAgo(f.date) <= 24)) {
+    const d = f.description || '';
+    if (d.startsWith('gazette-notice-compulsory')) add('high', 'strike_off_notice', `Compulsory strike-off notice on ${f.date} (usually missed filings)`, filingsUrl);
+    else if (d.startsWith('gazette-notice-voluntary')) add('high', 'voluntary_strike_off', `Voluntary strike-off application on ${f.date}`, filingsUrl);
+    else if (d.includes('strike-off-suspended')) add('medium', 'strike_off_suspended', `Strike-off action suspended on ${f.date}`, filingsUrl);
+  }
+  return out;
+}
+
+// A petition reaches the Gazette weeks before Companies House records anything.
+// Search finds notices by name; only a notice that carries the company number becomes a flag.
+async function gazetteCheck(coNames, num) {
+  const searched = [...new Set(coNames.map(n => n.replace(/[\s,]+(limited|ltd\.?|plc|llp)$/i, '').trim()).filter(Boolean))];
+  const found = new Map(), failed = [];
+  for (const name of searched) {
+    const results = parseJson(await getGazette(`/all-notices/notice/data.json?text=${encodeURIComponent(`"${name}"`)}&categorycode=${GAZETTE_CATEGORY}&sort-by=latest-date&results-page-size=20`));
+    if (!results) { failed.push(name); continue; }
+    for (const e of results.entry || []) {
+      const id = String(e.id || '').split('/').pop();
+      if (!id || found.has(id) || !e.published || monthsAgo(e.published) > GAZETTE_LOOKBACK_MONTHS) continue;
+      // the text search also finds other companies' notices that merely mention this name
+      if (e.title && !coNames.some(n => similar(n, e.title))) continue;
+      found.set(id, { title: e.title || null, notice_code: e['f:notice-code'] || null, category: e.category?.['@term'] || null, published: e.published.slice(0, 10), url: `${GAZETTE_SITE}/notice/${id}`, id });
+    }
+  }
+  const ownNumber = new RegExp(`(^|[^A-Z0-9])${num}([^A-Z0-9]|$)`, 'i');
+  const notices = [], nameOnly = [];
+  for (const [i, n] of [...found.values()].sort((a, b) => b.published.localeCompare(a.published)).entries()) {
+    const full = i < MAX_GAZETTE_NOTICES ? await getGazette(`/notice/${n.id}/data.json?view=linked-data`) : null;
+    const { id, ...notice } = n;
+    (full !== null && ownNumber.test(full) ? notices : nameOnly).push(notice);
+  }
+  const flags = notices.map(n => n.notice_code === PETITION_CODE && monthsAgo(n.published) <= PETITION_WINDOW_MONTHS
+    ? { severity: 'high', code: 'winding_up_petition', text: `Petition to wind up the company published in The Gazette on ${n.published}`, url: n.url }
+    : { severity: 'medium', code: 'gazette_insolvency', text: `Gazette insolvency notice on ${n.published}: ${n.category || `notice type ${n.notice_code}`}`, url: n.url });
+  return { searched_names: searched, failed_searches: failed, notices, name_only: nameOnly, flags };
+}
+const parseJson = text => { try { return JSON.parse(text); } catch { return null; } };
+
+// RFC 4180: quoted fields may hold commas, doubled quotes and line breaks
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch !== '"') field += ch;
+      else if (text[i + 1] === '"') { field += '"'; i++; } else quoted = false;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') { row.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); rows.push(row); row = []; field = '';
+    } else field += ch;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  const [header = [], ...body] = rows;
+  return body.filter(r => r.some(Boolean)).map(r => Object.fromEntries(header.map((h, i) => [h.trim(), (r[i] ?? '').trim()])));
+}
+// organisation names compared without case, punctuation or legal suffix
+const orgKey = s => (s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 ]/g, ' ').replace(/\b(the|limited|ltd|plc|llp)\b/g, ' ').replace(/\s+/g, ' ').trim();
+const companyNumberKey = s => { const t = (s || '').trim().toUpperCase(); return /^\d{1,8}$/.test(t) ? t.padStart(8, '0') : t; };
+
+const tokens = s => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(t => t.length > 2 && !STOP.has(t) && !/^\d+$/.test(t));
+const personKey = s => (s || '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(t => t && !['mr', 'mrs', 'ms', 'miss', 'dr'].includes(t)).sort().join(' ');
+const months = (a, b) => Math.abs(new Date(a) - new Date(b)) / (30.44 * 864e5);
+const monthsAgo = d => months(d, Date.now());
+const postcode = p => (p?.registered_office_address?.postal_code || '').replace(/\s/g, '').toUpperCase();
+// current registered office plus every earlier one named in the filing history
+function officePostcodes(p, filingItems) {
+  const set = new Set(postcode(p) ? [postcode(p)] : []);
+  for (const f of filingItems || []) {
+    if (!(f.description || '').startsWith('change-registered-office-address')) continue;
+    const text = `${f.description_values?.old_address || ''} ${f.description_values?.new_address || ''}`;
+    for (const m of text.match(/\b[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}\b/gi) || []) set.add(m.replace(/\s/g, '').toUpperCase());
+  }
+  return set;
+}
+// length of the longest run of characters two strings share
+function commonRun(a, b) {
+  let best = 0, prev = new Array(b.length + 1).fill(0);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = new Array(b.length + 1).fill(0);
+    for (let j = 1; j <= b.length; j++) if (a[i - 1] === b[j - 1]) { cur[j] = prev[j - 1] + 1; if (cur[j] > best) best = cur[j]; }
+    prev = cur;
+  }
+  return best;
+}
+function similar(a, b) {
+  const ta = tokens(a), tb = new Set(tokens(b));
+  const shared = ta.filter(t => tb.has(t)).length;
+  if (shared > 0 && shared / Math.min(ta.length, tb.size) >= 0.5) return true;
+  // joined-up brand names share no whole word: "MyFooDesk" and "FooDeskHR" still share "foodesk"
+  const ca = tokens(a).join(''), cb = tokens(b).join(''), run = commonRun(ca, cb);
+  return run >= 6 && run / Math.min(ca.length, cb.length) >= 0.7;
+}
+
+async function resolve(q) {
+  if (/^([A-Z]{2}\d{6}|\d{8})$/i.test(q.trim())) return q.trim().toUpperCase();
+  const items = (await get(`/search/companies?q=${encodeURIComponent(q)}&items_per_page=5`))?.items || [];
+  const canon = s => s.toLowerCase().replace(/\bltd\b/g, 'limited').replace(/[^a-z0-9]/g, '');
+  const exact = items.filter(i => canon(i.title) === canon(q));
+  const bare = s => canon(s).replace(/(limited|plc|llp)$/, ''); // same name, give or take the legal suffix
+  const loose = items.filter(i => bare(i.title) === bare(q));
+  const pick = exact.length === 1 ? exact[0] : loose.length === 1 ? loose[0] : items.length === 1 ? items[0] : null;
+  if (pick) return pick.company_number;
+  console.log(JSON.stringify({ ambiguous: true, candidates: items.map(i => ({ number: i.company_number, name: i.title, status: i.company_status, incorporated: i.date_of_creation, address: i.address_snippet })) }, null, 2));
+  process.exit(3);
+}
+
+const argv = process.argv.slice(2);
+const akaAt = argv.indexOf('--aka');
+const aka = akaAt >= 0 ? (argv[akaAt + 1] || '').split(',').map(s => s.trim()).filter(Boolean) : []; // brand, product or website names the company trades under
+const arg = (akaAt >= 0 ? argv.slice(0, akaAt) : argv).join(' ');
+if (!arg) fail(1, 'Usage: node ch-check.mjs "<company number or name>" [--aka "Brand, Product name"]');
+if (!KEY) fail(2, 'COMPANIES_HOUSE_API_KEY not set');
+
+const number = await resolve(arg);
+const c = await get(`/company/${number}`);
+if (!c) fail(1, `Company ${number} not found`);
+const [off, psc, insolv, charges, filings] = await Promise.all([
+  get(`/company/${number}/officers?items_per_page=100`),
+  get(`/company/${number}/persons-with-significant-control?items_per_page=50`),
+  get(`/company/${number}/insolvency`),
+  get(`/company/${number}/charges`),
+  get(`/company/${number}/filing-history?items_per_page=100`),
+]);
+
+const flags = [];
+const flag = (severity, code, text, url = `${SITE}/company/${number}`) => flags.push({ severity, code, text, url });
+const names = [c.company_name, ...(c.previous_company_names || []).map(p => p.name), ...aka];
+const targetOffices = officePostcodes(c, filings?.items);
+const ageMonths = c.date_of_creation ? monthsAgo(c.date_of_creation) : null;
+
+// --- company-level flags
+for (const f of registerFlags(c, number, insolv, filings?.items)) flag(f.severity, f.code, f.text, f.url);
+if (c.accounts?.last_accounts?.type === 'dormant') flag('medium', 'dormant_accounts', 'Last accounts were filed as dormant');
+if (ageMonths !== null && ageMonths < 24) flag('low', 'young_company', `Incorporated ${c.date_of_creation} (${Math.round(ageMonths)} months old)`);
+const recentRenames = (c.previous_company_names || []).filter(p => p.ceased_on && monthsAgo(p.ceased_on) <= 36);
+if (recentRenames.length >= 2) flag('medium', 'renames', `${recentRenames.length} name changes in the last 3 years: ${recentRenames.map(p => p.name).join(', ')}`);
+const outstandingCharges = (charges?.items || []).filter(x => x.status === 'outstanding').length;
+if (outstandingCharges) flag('info', 'charges', `${outstandingCharges} outstanding charge(s) (secured lending)`, `${SITE}/company/${number}/charges`);
+
+// --- accounts: newest filing first; a newer filing's comparatives fill years whose own filing is PDF-only
+const accountsFilings = (filings?.items || []).filter(f => f.category === 'accounts' && f.type === 'AA' && f.links?.document_metadata).slice(0, ACCOUNTS_FILINGS);
+const accountsHistory = [], factsByPeriod = new Map();
+let goingConcernDoubt = null;
+for (const [i, f] of accountsFilings.entries()) {
+  const doc = await accountsDocument(f.links.document_metadata);
+  if (doc.text) {
+    for (const [end, facts] of parseIxbrl(doc.text)) factsByPeriod.set(end, { ...facts, ...factsByPeriod.get(end) });
+    if (i === 0) goingConcernDoubt = reportsGoingConcernDoubt(doc.text);
+  }
+  accountsHistory.push({ year_end: f.description_values?.made_up_date || null, filed: f.date || null, format: doc.format });
+}
+for (const year of accountsHistory) Object.assign(year, { net_assets: null, cash: null, employees: null, turnover: null, ...factsByPeriod.get(year.year_end) });
+const [latestYear, previousYear] = accountsHistory;
+const filingsUrl = `${SITE}/company/${number}/filing-history`;
+if (goingConcernDoubt) flag('high', 'going_concern', `Accounts made up to ${latestYear.year_end} report a material uncertainty about going concern`, filingsUrl);
+if (latestYear?.net_assets < 0) flag('medium', 'negative_net_assets', `Net liabilities of ${money(-latestYear.net_assets)} at ${latestYear.year_end}`, filingsUrl);
+if (previousYear?.net_assets > 0 && latestYear.net_assets !== null && latestYear.net_assets >= 0 && latestYear.net_assets < previousYear.net_assets * 0.5) {
+  flag('medium', 'net_assets_fall', `Net assets fell from ${money(previousYear.net_assets)} to ${money(latestYear.net_assets)} (${previousYear.year_end} to ${latestYear.year_end})`, filingsUrl);
+}
+if (previousYear?.employees >= MIN_HEADCOUNT_FOR_TREND && latestYear.employees !== null && latestYear.employees < previousYear.employees * 0.75) {
+  flag('medium', 'headcount_fall', `Average employees fell from ${previousYear.employees} to ${latestYear.employees} (${previousYear.year_end} to ${latestYear.year_end})`, filingsUrl);
+}
+
+// --- Gazette
+const gazette = await gazetteCheck(names, number);
+const gazetteNames = gazette.searched_names;
+for (const f of gazette.flags) flag(f.severity, f.code, f.text, f.url);
+
+// --- corporate owners: an insolvent parent puts staff at the subsidiary at risk too, so follow owners
+// up to the UK parent and run the register and Gazette checks on each (not the director checks)
+const parents = [], parentsNotFollowed = [], seenInGroup = new Set([number]);
+const parentQueue = [{ items: psc?.items, level: 1, ownerOf: c.company_name }];
+while (parentQueue.length) {
+  const { items, level, ownerOf } = parentQueue.shift();
+  for (const owner of (items || []).filter(p => !p.ceased_on && (p.kind || '').startsWith('corporate-entity'))) {
+    const ident = owner.identification || {}, register = ident.country_registered || ident.place_registered;
+    const parentNumber = companyNumberKey(ident.registration_number);
+    const notFollowed = reason => parentsNotFollowed.push({ name: owner.name, owner_of: ownerOf, reason });
+    if (!UK_REGISTER.test(register || '')) { notFollowed(register ? `registered in ${register}` : 'register not stated'); continue; }
+    if (!/^([A-Z]{2}\d{6}|\d{8})$/.test(parentNumber)) { notFollowed('no UK company number given'); continue; }
+    if (seenInGroup.has(parentNumber)) continue;
+    if (level > MAX_PARENT_LEVELS) { notFollowed(`more than ${MAX_PARENT_LEVELS} levels up`); continue; }
+    seenInGroup.add(parentNumber);
+    const parent = await get(`/company/${parentNumber}`);
+    if (!parent) { notFollowed(`no Companies House record for ${parentNumber}`); continue; }
+    const [parentPsc, parentInsolvency, parentFilings] = await Promise.all([
+      get(`/company/${parentNumber}/persons-with-significant-control?items_per_page=50`),
+      get(`/company/${parentNumber}/insolvency`),
+      get(`/company/${parentNumber}/filing-history?items_per_page=100`),
+    ]);
+    const parentGazette = await gazetteCheck([parent.company_name, ...(parent.previous_company_names || []).map(x => x.name)], parentNumber);
+    const parentFlags = [...registerFlags(parent, parentNumber, parentInsolvency, parentFilings?.items), ...parentGazette.flags];
+    for (const f of parentFlags) flag(f.severity, `parent_${f.code}`, `Parent ${parent.company_name}: ${f.text}`, f.url);
+    parents.push({ level, name: parent.company_name, number: parentNumber, status: parent.company_status, owner_of: ownerOf, control: owner.natures_of_control || [],
+      flags: parentFlags.map(f => f.code), gazette_name_only: parentGazette.name_only, url: `${SITE}/company/${parentNumber}` });
+    parentQueue.push({ items: parentPsc?.items, level: level + 1, ownerOf: parent.company_name });
+  }
+}
+
+// --- employer registers. Gender pay gap and sponsor licence are context for the report, never flags.
+const nameKeys = new Set(names.map(orgKey).filter(Boolean));
+const gpgYears = Array.from({ length: GPG_YEARS }, (_, i) => new Date().getFullYear() - i);
+const sponsorPage = parseJson(await getPublic(`${GOVUK_BASE}/api/content${SPONSOR_REGISTER_PAGE}`));
+const sponsorCsvUrl = (sponsorPage?.details?.attachments || []).find(a => a.content_type === 'text/csv')?.url;
+const [sponsorCsv, ...gpgCsvs] = await Promise.all([
+  sponsorCsvUrl ? getPublic(new URL(sponsorCsvUrl, GOVUK_BASE).href, 'text/csv') : null,
+  ...gpgYears.map(y => getPublic(`${GPG_BASE}/viewing/download-data/${y}`, 'text/csv')),
+]);
+
+const genderPayGap = { filings: [], failed_years: [] };
+for (const [i, csv] of gpgCsvs.entries()) {
+  if (csv === null) { genderPayGap.failed_years.push(gpgYears[i]); continue; }
+  for (const r of parseCsv(csv).filter(r => companyNumberKey(r.CompanyNumber) === number)) {
+    genderPayGap.filings.push({ snapshot_year: gpgYears[i], employer_size: r.EmployerSize || null, submitted_late: r.SubmittedAfterTheDeadline === 'True',
+      date_submitted: (r.DateSubmitted || '').slice(0, 10).replace(/\//g, '-') || null, url: `${GPG_SITE}/employers/${r.EmployerId}` });
+  }
+}
+
+const sponsorRegister = { checked: sponsorCsv !== null, listed: null, matches: [], url: GOVUK_SITE + SPONSOR_REGISTER_PAGE };
+if (sponsorCsv !== null) {
+  const rows = parseCsv(sponsorCsv).filter(r => nameKeys.has(orgKey(r['Organisation Name'])))
+    .map(r => ({ name: r['Organisation Name'], town: r['Town/City'] || null, type_rating: r['Type & Rating'] || null, route: r.Route || null }));
+  sponsorRegister.matches = [...new Map(rows.map(r => [JSON.stringify(r), r])).values()];
+  sponsorRegister.listed = sponsorRegister.matches.length > 0;
+}
+
+// Tribunal titles read "Claimant v Respondent(s): case number"; respondents may be numbered "(1) X (2) Y"
+function namesRespondent(title) {
+  const respondents = (title || '').replace(/:[^:]*$/, '').split(/\s+v\.?\s+/i).slice(1).join(' v ');
+  const parties = [respondents, ...respondents.replace(/\(\d+\)/g, ',').split(/,|\s+and\s+|\s*&\s*/i)].map(orgKey);
+  return parties.some(p => nameKeys.has(p));
+}
+const tribunalDecisions = new Map();
+let tribunalSearchFailed = false;
+for (const name of gazetteNames) {
+  const fields = ['title', 'link', 'public_timestamp', 'tribunal_decision_categories', 'tribunal_decision_decision_date'].map(f => `&fields=${f}`).join('');
+  const found = parseJson(await getPublic(`${GOVUK_BASE}/api/search.json?filter_format=employment_tribunal_decision&q=${encodeURIComponent(name)}&count=50${fields}`));
+  if (!found) { tribunalSearchFailed = true; continue; }
+  for (const d of found.results || []) {
+    const decided = d.tribunal_decision_decision_date || d.public_timestamp?.slice(0, 10);
+    if (!d.link || tribunalDecisions.has(d.link) || !decided || monthsAgo(decided) > TRIBUNAL_LOOKBACK_MONTHS || !namesRespondent(d.title)) continue;
+    tribunalDecisions.set(d.link, { title: d.title, decision_date: decided, categories: d.tribunal_decision_categories || [], url: GOVUK_SITE + d.link });
+  }
+}
+const tribunals = [...tribunalDecisions.values()].sort((a, b) => b.decision_date.localeCompare(a.decision_date));
+if (tribunals.length) {
+  flag('low', 'tribunal_decisions', `${tribunals.length} employment tribunal decision${tribunals.length > 1 ? 's' : ''} since ${tribunals.at(-1).decision_date} name the company as respondent; read them for the outcome`, tribunals[0].url);
+}
+
+// --- officers
+const officers = off?.items || [];
+const isDir = o => /director|llp-.*member/.test(o.officer_role || '');
+const activeDirs = officers.filter(o => !o.resigned_on && isDir(o));
+const recentResignations = officers.filter(o => o.resigned_on && isDir(o) && monthsAgo(o.resigned_on) <= 12);
+if (recentResignations.length >= 2) flag('medium', 'director_churn', `${recentResignations.length} directors resigned in the last 12 months`, `${SITE}/company/${number}/officers`);
+if (!activeDirs.length) flag('high', 'no_directors', 'No active directors on record', `${SITE}/company/${number}/officers`);
+
+const profiles = new Map();
+let lookups = 0, skippedLookups = 0;
+async function profile(num) {
+  if (profiles.has(num)) return profiles.get(num);
+  if (lookups >= MAX_PROFILE_LOOKUPS) { skippedLookups++; return null; }
+  lookups++;
+  const p = await get(`/company/${num}`);
+  profiles.set(num, p);
+  return p;
+}
+
+const histories = new Map();
+async function addressHistory(num) {
+  if (histories.has(num)) return histories.get(num);
+  if (histories.size >= MAX_HISTORY_LOOKUPS) { skippedLookups++; return []; }
+  const items = (await get(`/company/${num}/filing-history?category=address&items_per_page=100`))?.items || [];
+  histories.set(num, items);
+  return items;
+}
+
+// same person: same birth month and year and one name contained in the other (middle names come and go); without a birth date, the names must be equal
+function samePerson(a, b) {
+  const ka = personKey(a.name).split(' '), kb = personKey(b.name).split(' ');
+  if (!a.date_of_birth || !b.date_of_birth) return ka.join(' ') === kb.join(' ');
+  if (a.date_of_birth.year !== b.date_of_birth.year || a.date_of_birth.month !== b.date_of_birth.month) return false;
+  const [short, long] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
+  return short.length >= 2 && short.every(t => long.includes(t));
+}
+// people to check: active directors, plus individual owners (PSCs) who are not directors
+const people = activeDirs.slice(0, MAX_DIRECTORS).map(o => ({ name: o.name, officer_role: o.officer_role, appointed_on: o.appointed_on, date_of_birth: o.date_of_birth, paths: [o.links?.officer?.appointments].filter(Boolean) }));
+for (const p of (psc?.items || []).filter(p => !p.ceased_on && (p.kind || '').startsWith('individual'))) {
+  if (people.some(x => samePerson(x, p))) continue;
+  people.push({ name: p.name, officer_role: 'owner (PSC), not a director', appointed_on: p.notified_on, date_of_birth: p.date_of_birth, paths: [] });
+}
+// the register often holds several officer records for one person, and owners have none linked: find them by name and birth month
+for (const person of people) {
+  if (!person.date_of_birth) continue; // a name alone is not enough to tie another record to this person
+  const q = person.name.replace(/^(mr|mrs|ms|miss|dr)\.?\s+/i, '');
+  const hits = (await get(`/search/officers?q=${encodeURIComponent(q)}&items_per_page=20`))?.items || [];
+  for (const hit of hits) {
+    if (hit.date_of_birth && hit.links?.self && samePerson(person, { name: hit.title, date_of_birth: hit.date_of_birth }) && !person.paths.includes(hit.links.self) && person.paths.length < 4) person.paths.push(hit.links.self);
+  }
+}
+
+const directors = [], cyclesSeen = new Set();
+for (const o of people) {
+  const url = o.paths[0] ? SITE + o.paths[0] : `${SITE}/company/${number}/officers`;
+  const items = [];
+  for (const apptPath of o.paths) for (let start = 0; start < 100; start += 50) {
+    const page = await get(`${apptPath}?items_per_page=50&start_index=${start}`);
+    if (!page) break;
+    items.push(...(page.items || []));
+    if (start + 50 >= (page.total_results || 0)) break;
+  }
+  const seenCo = new Set(); // one entry per company, even if the officer holds two roles there
+  const others = items.filter(a => a.appointed_to?.company_number && a.appointed_to.company_number !== number && !seenCo.has(a.appointed_to.company_number) && seenCo.add(a.appointed_to.company_number));
+  const status = a => a.appointed_to.company_status || 'unknown';
+  const dissolved = others.filter(a => status(a) === 'dissolved');
+  const insolvent = others.filter(a => INSOLVENT.includes(status(a)));
+  // look up insolvent companies first, then similar-named ones, then dissolved ones, then the rest (until the lookup budget runs out)
+  const nameHit = a => names.some(n => similar(n, a.appointed_to.company_name));
+  const queued = new Set();
+  const queue = [...insolvent, ...others.filter(nameHit), ...dissolved, ...others].filter(a => !queued.has(a.appointed_to.company_number) && queued.add(a.appointed_to.company_number));
+
+  const failed = [], related = [];
+  let solventCount = 0;
+  for (const a of queue) {
+    const p = await profile(a.appointed_to.company_number);
+    if (!p) continue;
+    const signals = [];
+    const insolvencyRecord = INSOLVENT.includes(p.company_status) || p.has_insolvency_history;
+    const solventLiquidation = insolvencyRecord && isSolventWindUp((await get(`/company/${p.company_number}/insolvency`))?.cases);
+    if (solventLiquidation && INSOLVENT.includes(a.appointed_to.company_status)) solventCount++;
+    const wasInsolvent = insolvencyRecord && !solventLiquidation;
+    const closed = insolvencyRecord || p.company_status === 'dissolved';
+    const pNames = [p.company_name, ...(p.previous_company_names || []).map(x => x.name)];
+    const sameName = names.some(n => pNames.some(m => similar(n, m)));
+    let samePostcode = postcode(p) && targetOffices.has(postcode(p)) ? 'same registered postcode' : null;
+    if (!samePostcode && closed) { // a liquidator moves the registered office to their own address, so compare earlier offices too
+      if ([...officePostcodes(p, await addressHistory(p.company_number))].some(x => targetOffices.has(x))) samePostcode = 'shared previous registered postcode';
+    }
+    if (wasInsolvent) signals.push('insolvency');
+    if (sameName) signals.push('similar name');
+    if (samePostcode) signals.push(samePostcode);
+    if ((p.sic_codes || []).some(s => (c.sic_codes || []).includes(s))) signals.push('same SIC code');
+    if (p.date_of_cessation && c.date_of_creation && months(p.date_of_cessation, c.date_of_creation) <= PHOENIX_WINDOW_MONTHS) signals.push(`target incorporated within ${PHOENIX_WINDOW_MONTHS} months of its closure`);
+    else if (!p.date_of_cessation && wasInsolvent && ageMonths !== null && ageMonths <= PHOENIX_WINDOW_MONTHS) signals.push('target incorporated recently while this company is insolvent');
+    const phoenix = !wasInsolvent ? null : signals.includes('similar name') && signals.length >= 3 ? 'strong' : signals.length >= 2 ? 'possible' : null;
+    if (sameName || samePostcode) related.push({ name: p.company_name, number: p.company_number, status: p.company_status, incorporated: p.date_of_creation || null, ceased: p.date_of_cessation || null, closed: !!closed, insolvent: !!wasInsolvent, url: `${SITE}/company/${p.company_number}` });
+    if (!closed) continue; // active companies only count towards the cycling check below
+    if (!wasInsolvent && signals.length < 2) continue; // plain dissolved company, nothing to report
+    failed.push({ name: p.company_name, number: p.company_number, status: p.company_status, ceased: p.date_of_cessation || null, director_resigned_on: a.resigned_on || null, signals, phoenix, solvent_liquidation: solventLiquidation, url: `${SITE}/company/${p.company_number}` });
+    if (phoenix) flag(phoenix === 'strong' ? 'high' : 'medium', `phoenix_${phoenix}`, `${o.name}: ${phoenix} phoenix pattern with ${p.company_name} (${p.company_status}) - ${signals.join(', ')}`, `${SITE}/company/${p.company_number}`);
+  }
+  const insolventOnly = failed.filter(f => f.signals.includes('insolvency') && !f.phoenix);
+  if (insolventOnly.length) flag('medium', 'director_insolvencies', `${o.name}: director of ${insolventOnly.length} other compan${insolventOnly.length > 1 ? 'ies' : 'y'} with insolvency history (${insolventOnly.map(f => f.name).join(', ')})`, url);
+  // serial pattern: a chain of related companies (similar name or same registered postcode) opened and closed one after another
+  related.sort((x, y) => (x.incorporated || '').localeCompare(y.incorporated || ''));
+  const closedRelated = related.filter(r => r.closed && (!r.ceased || monthsAgo(r.ceased) <= CYCLE_LOOKBACK_MONTHS));
+  const cycleKey = closedRelated.map(r => r.number).sort().join(',');
+  if (closedRelated.length >= 2 && !cyclesSeen.has(cycleKey)) {
+    cyclesSeen.add(cycleKey);
+    const span = r => `${(r.incorporated || '?').slice(0, 4)}-${r.ceased ? r.ceased.slice(0, 4) : r.closed ? 'insolvent' : 'active'}`;
+    flag(closedRelated.length >= 3 || closedRelated.some(r => r.insolvent) ? 'high' : 'medium', 'company_cycling', `${o.name}: ${closedRelated.length} closed companies in the last 10 years with a similar name or the same registered postcode - ${related.map(r => `${r.name} (${span(r)})`).join(', ')}`, url);
+  }
+  if (dissolved.length >= 5 && dissolved.length / others.length >= 0.5) flag('low', 'serial_dissolutions', `${o.name}: ${dissolved.length} of ${others.length} other appointments are dissolved companies`, url);
+
+  let disqualification = null;
+  if (!(o.officer_role || '').startsWith('corporate')) {
+    const dq = await get(`/search/disqualified-officers?q=${encodeURIComponent(o.name)}&items_per_page=10`);
+    for (const hit of (dq?.items || []).filter(i => personKey(i.title) === personKey(o.name))) {
+      const dob = hit.date_of_birth && o.date_of_birth ? Number(hit.date_of_birth.slice(0, 4)) === o.date_of_birth.year && Number(hit.date_of_birth.slice(5, 7)) === o.date_of_birth.month : null;
+      if (dob === false) continue;
+      disqualification = dob ? 'name and birth month/year match' : 'name match only - verify';
+      flag(dob ? 'high' : 'medium', 'disqualification', `${o.name}: disqualified-director register hit (${disqualification})`, `${SITE}/search/disqualified-officers?q=${encodeURIComponent(o.name)}`);
+      break;
+    }
+  }
+  directors.push({ name: o.name, role: o.officer_role, appointed_on: o.appointed_on || null, total_appointments: items.length, officer_records: o.paths.length, other_active: others.filter(a => status(a) === 'active' && !a.resigned_on).length, dissolved: dissolved.length, insolvent_now: insolvent.length - solventCount, solvent_liquidations: solventCount, failed_companies: failed, related_companies: related, disqualification, url });
+}
+
+const pscs = (psc?.items || []).filter(p => !p.ceased_on).map(p => ({ name: p.name, kind: (p.kind || '').replace(/-person-with-significant-control$/, ''), control: p.natures_of_control || [] }));
+if (!pscs.length) flag('info', 'no_psc', 'No active person with significant control on record', `${SITE}/company/${number}/persons-with-significant-control`);
+
+const order = { high: 0, medium: 1, low: 2, info: 3 };
+flags.sort((a, b) => order[a.severity] - order[b.severity]);
+console.log(JSON.stringify({
+  checked_at: new Date().toISOString().slice(0, 10),
+  company: {
+    name: c.company_name, number, also_known_as: aka, status: c.company_status, type: c.type, incorporated: c.date_of_creation, age_months: ageMonths === null ? null : Math.round(ageMonths),
+    registered_office: Object.values(c.registered_office_address || {}).join(', '), sic_codes: c.sic_codes || [],
+    previous_names: (c.previous_company_names || []).map(p => ({ name: p.name, until: p.ceased_on })),
+    accounts: { last_made_up_to: c.accounts?.last_accounts?.made_up_to || null, type: c.accounts?.last_accounts?.type || null, next_due: c.accounts?.next_due || null, overdue: !!c.accounts?.overdue,
+      history: accountsHistory, going_concern_doubt: goingConcernDoubt },
+    confirmation_statement: { next_due: c.confirmation_statement?.next_due || null, overdue: !!c.confirmation_statement?.overdue },
+    outstanding_charges: outstandingCharges, insolvency_cases: (insolv?.cases || []).map(x => x.type),
+    gazette: { searched_names: gazette.searched_names, failed_searches: gazette.failed_searches, notices: gazette.notices },
+    parents, gender_pay_gap: genderPayGap, sponsor_register: sponsorRegister,
+    tribunal_decisions: { search_failed: tribunalSearchFailed, decisions: tribunals },
+    active_directors: activeDirs.length, resigned_last_12_months: recentResignations.length, url: `${SITE}/company/${number}`,
+  },
+  directors, pscs, flags,
+  meta: { requests, directors_not_checked: Math.max(0, activeDirs.length - MAX_DIRECTORS), people_without_officer_record: people.filter(p => !p.paths.length).map(p => p.name), company_lookups_skipped: skippedLookups, gazette_name_only: gazette.name_only, parents_not_followed: parentsNotFollowed,
+    caveats: ['Companies House often holds several officer records for one person, so appointment histories can be incomplete.', 'Name-based matches (similar names, disqualification hits) are leads to verify, not findings.',
+      'Accounts figures are read from iXBRL tags only; a year marked "pdf" or "unavailable" has to be read by hand.',
+      `Gazette notices from the last ${GAZETTE_LOOKBACK_MONTHS / 12} years are flagged only when they carry the company number; gazette_name_only lists the rest to check by hand.`,
+      'The sponsor register and tribunal decisions are matched on name only. The sponsor register lists current sponsors only, so a revoked licence does not show.'] },
+}, null, 2));
