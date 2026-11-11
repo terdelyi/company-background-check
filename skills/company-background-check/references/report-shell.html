@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>Background check: {Company name}</title>
 <style>
   :root {
@@ -71,7 +72,8 @@
   thead th { font-size: .8rem; font-weight: 600; color: var(--muted); border-bottom-color: var(--ink); }
   tbody th { font-weight: 600; width: 13.5em; }
   .nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .num { text-align: right; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .evidence { width: 11em; }
   .subhead { margin: 26px 0 6px; font-size: 1rem; font-weight: 650; }
   .callout { margin: 16px 0 0; padding: 14px 18px; border-left: 6px solid var(--high); background: var(--high-tint); }
   .callout--none { border-left-color: var(--low); background: var(--low-tint); }
@@ -93,7 +95,13 @@
     .verdict { grid-template-columns: 1fr; }
     .areas { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; }
     .sources { columns: 1; }
-    table { min-width: 560px; }
+    table:not(.flags):not(.record) { min-width: 560px; }
+    .record tbody th { width: 8.5em; }
+    /* Stacked, so the evidence link stays on screen instead of behind a sideways scroll */
+    .flags thead { display: none; }
+    .flags tr { display: grid; grid-template-columns: 5.2em 1fr; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+    .flags td { padding: 0; border: 0; }
+    .flags td.evidence { grid-column: 2; width: auto; }
   }
 
   @page { size: A4; margin: 14mm 14mm 16mm; }
@@ -157,18 +165,18 @@
 
   <section>
     <h2>Red flags</h2>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Severity</th><th>Flag</th><th>Evidence</th></tr></thead>
+    <div class="table-wrap"><table class="flags">
+      <thead><tr><th>Severity</th><th>Flag</th><th class="evidence">Evidence</th></tr></thead>
       <tbody>
         <!-- chip class: chip--high, chip--medium, chip--low or chip--info -->
-        <tr><td><span class="chip chip--{severity}">{Severity}</span></td><td><strong>{Short name.}</strong> {What was found.}</td><td><a href="{url}">{source}</a></td></tr>
+        <tr><td><span class="chip chip--{severity}">{Severity}</span></td><td><strong>{Short name.}</strong> {What was found.}</td><td class="evidence"><a href="{url}">{source}</a></td></tr>
       </tbody>
     </table></div>
   </section>
 
   <section>
     <h2>Company record</h2>
-    <div class="table-wrap"><table><tbody>
+    <div class="table-wrap"><table class="record"><tbody>
       <tr><th scope="row">{Field}</th><td>{Value}</td></tr>
     </tbody></table></div>
     <h3 class="subhead">Financials</h3>
@@ -182,8 +190,8 @@
   <section>
     <h2>Directors and owners</h2>
     <div class="table-wrap"><table>
-      <thead><tr><th>Name</th><th>Role</th><th>Since</th><th>Other appointments</th><th>Dissolved</th><th>Insolvent</th><th>Notes</th></tr></thead>
-      <tbody><tr><td class="nowrap">{Name}</td><td>{Role}</td><td class="nowrap">{Date}</td><td>{n}</td><td>{n}</td><td>{n}</td><td>{Notes}</td></tr></tbody>
+      <thead><tr><th>Name</th><th>Role</th><th>Since</th><th class="num">Other roles</th><th class="num">Dissolved</th><th class="num">Insolvent</th><th>Notes</th></tr></thead>
+      <tbody><tr><td class="nowrap">{Name}</td><td>{Role}</td><td class="nowrap">{Date}</td><td class="num">{n}</td><td class="num">{n}</td><td class="num">{n}</td><td>{Notes}</td></tr></tbody>
     </table></div>
     <p class="note"><strong>Owners (PSCs):</strong> {names and level of control}</p>
     <p class="note"><strong>Group:</strong> {UK parents in order up the chain, each with its status and any finding, or "No corporate owner". Owners not followed and why.}</p>

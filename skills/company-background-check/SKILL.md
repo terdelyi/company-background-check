@@ -126,7 +126,7 @@ If Companies House could not be checked for a UK company, write the rating as "L
 
 The report is one self-contained HTML page. Its content follows the outline below, and its look comes from the page shell described below. Fill in the outline first. All eleven sections appear every time, in this order, with these headings and table columns. If a section has nothing, keep the heading and write "Nothing found." Do not add, rename, merge or reorder sections; anything that does not fit goes in "Not checked and limits". Dates are YYYY-MM-DD. Every row that makes a claim carries a link.
 
-Save the page as `<company-name>-background-check.html` and send it as a file. Do not publish it to a shareable URL: it puts real people's names next to risk flags, and who sees it is the user's call. In the chat, give only the risk rating with its reason and anything important you could not check; the detail lives in the file. If the user asks for plain text instead, give the outline as markdown.
+Save the page as `<company-name>-background-check.html` and open it in the user's browser: `open <file>` on macOS, `xdg-open <file>` on Linux, `start "" <file>` on Windows. Where there is no local browser, such as on claude.ai or in a sandbox, send it as a file instead. Do not publish it to a shareable URL: it puts real people's names next to risk flags, and who sees it is the user's call. In the chat, keep to two or three sentences: the risk rating with its reason and anything important you could not check. The detail lives in the file, so do not repeat its sections. If the user asks for plain text instead, give the outline as markdown.
 
 ```markdown
 # Background check: {Company name}
@@ -164,7 +164,7 @@ Save the page as `<company-name>-background-check.html` and send it as a file. D
 
 ## 3. Directors and owners
 
-| Name | Role | Since | Other appointments | Dissolved | Insolvent | Notes |
+| Name | Role | Since | Other roles | Dissolved | Insolvent | Notes |
 |---|---|---|---|---|---|---|
 
 **Owners (PSCs):** {names and level of control}
