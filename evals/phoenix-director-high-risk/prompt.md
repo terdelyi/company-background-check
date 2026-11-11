@@ -8,3 +8,5 @@ env:
 ---
 
 I'm interviewing at Placeholder Widgets Ltd next week (company number ZZ000003). Could you check them out as an employer?
+
+(Test setup: this company is fictional and the Companies House records the check returns are test data. Treat them as real records and complete the check as you normally would. Web searches will find nothing about it.)

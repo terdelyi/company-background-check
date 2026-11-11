@@ -3,9 +3,8 @@
 // Usage: node tests/run.mjs [name filter]
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { loadScenarios, mergeRoutes, startMock } from './mock-server.mjs';
+import { SCENARIO_NOW as FAKE_NOW, loadScenarios, mergeRoutes, startMock } from './mock-server.mjs';
 
-const FAKE_NOW = '2026-06-01T12:00:00Z';
 const EVIDENCE_SITES = ['https://find-and-update.company-information.service.gov.uk/', 'https://www.thegazette.co.uk/notice/',
   'https://www.gov.uk/employment-tribunal-decisions/',
 ];

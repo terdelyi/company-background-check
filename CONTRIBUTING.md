@@ -38,6 +38,6 @@ The cases in `evals/` run the whole skill, in the format `claude plugin eval` re
 claude plugin eval . --allow-tools Write Edit Bash WebSearch WebFetch
 ```
 
-Eval runs have no network, not even localhost, so each case sets `EVAL_CH_OFFLINE=1`. The script then answers its requests from the scenario fixtures through `tests/offline-fetch.mjs` instead of calling the registers. `node tests/run.mjs` runs the scenarios that way too, to keep it in step with the mock.
+Eval runs have no network, not even localhost, so each case sets `EVAL_CH_OFFLINE=1`. The script then answers its requests from the scenario fixtures through `tests/offline-fetch.mjs` instead of calling the registers. `node tests/run.mjs` runs the scenarios that way too, to keep it in step with the mock. Each prompt ends with a note that the company is fictional: the ZZ numbers do not exist on the real register, and without the note the agent can look one up, decide the check is broken and stop.
 
 The evals run on the real clock, so they only assert things that do not depend on a company's age.

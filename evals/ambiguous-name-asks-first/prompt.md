@@ -8,3 +8,5 @@ env:
 ---
 
 Can you do a background check on Placeholder Common? They've offered me a contract.
+
+(Test setup: this company is fictional and the Companies House records the check returns are test data. Treat them as real records and complete the check as you normally would. Web searches will find nothing about it.)

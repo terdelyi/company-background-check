@@ -8,3 +8,5 @@ env:
 ---
 
 I've got a job offer from Placeholder Clean Ltd, company number ZZ000001. Can you run a background check on them before I accept?
+
+(Test setup: this company is fictional and the Companies House records the check returns are test data. Treat them as real records and complete the check as you normally would. Web searches will find nothing about it.)
