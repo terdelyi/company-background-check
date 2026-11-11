@@ -4,14 +4,15 @@ const target = company('ZZ000006', 'ZETAQUILL HOLDINGS LIMITED', { date_of_creat
 const piDob = { month: 12, year: 1977 };
 
 export default {
-  description: 'An exact name match is picked over a near one, and a brand passed with --aka links an insolvent company with a different registered name',
-  args: ['Zetaquill Holdings Limited', '--aka', 'PlaceholderDesk'],
+  description: 'An exact name match is picked over a near one, a brand passed with --aka links an insolvent company with a different registered name, and a name repeated in a different case is searched once',
+  args: ['Zetaquill Holdings Limited', '--aka', 'PlaceholderDesk, Zetaquill Holdings'],
   expect: {
     exit: 0,
     flags: ['high phoenix_strong'],
     fields: {
       'company.number': 'ZZ000006',
-      'company.also_known_as': ['PlaceholderDesk'],
+      'company.also_known_as': ['PlaceholderDesk', 'Zetaquill Holdings'],
+      'company.gazette.searched_names': ['ZETAQUILL HOLDINGS', 'PlaceholderDesk'],
       'directors.0.failed_companies.0.signals': ['insolvency', 'similar name', 'same SIC code'],
     },
   },

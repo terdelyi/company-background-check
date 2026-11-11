@@ -151,9 +151,14 @@ function registerFlags(co, num, insolvency, filingItems) {
 // A petition reaches the Gazette weeks before Companies House records anything.
 // Search finds notices by name; only a notice that carries the company number becomes a flag.
 const searchName = n => n.replace(/[\s,]+(limited|ltd\.?|plc|llp)$/i, '').trim();
+// Registered names are upper case and brands mixed case, so "HEALTHBOX" and "HealthBox" are one search
+const uniqueSearchNames = coNames => {
+  const seen = new Set();
+  return coNames.map(searchName).filter(n => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
+};
 
 async function gazetteCheck(coNames, num) {
-  const searched = [...new Set(coNames.map(searchName).filter(Boolean))];
+  const searched = uniqueSearchNames(coNames);
   const found = new Map(), failed = [];
   for (const name of searched) {
     const results = parseJson(await getGazette(`/all-notices/notice/data.json?text=${encodeURIComponent(`"${name}"`)}&categorycode=${GAZETTE_CATEGORY}&sort-by=latest-date&results-page-size=20`));
@@ -387,10 +392,14 @@ if (sponsorCsv !== null) {
 }
 
 // Tribunal titles read "Claimant v Respondent(s): case number"; respondents may be numbered "(1) X (2) Y"
+// Respondents carry a status, "(in Liquidation)", and may space a name differently from the register: "My Health Box" for "MYHEALTHBOX"
 function namesRespondent(title, keys) {
-  const respondents = (title || '').replace(/:[^:]*$/, '').split(/\s+v\.?\s+/i).slice(1).join(' v ');
-  const parties = [respondents, ...respondents.replace(/\(\d+\)/g, ',').split(/,|\s+and\s+|\s*&\s*/i)].map(orgKey);
-  return parties.some(p => keys.has(p));
+  const respondents = (title || '').replace(/:[^:]*$/, '').split(/\s+v\.?\s+/i).slice(1).join(' v ')
+    .replace(/\((in )?(creditors' voluntary |compulsory )?(liquidation|administration|receivership)\)/gi, ' ');
+  const parties = [respondents, ...respondents.replace(/\(\d+\)/g, ',').split(/,|\s+and\s+|\s*&\s*/i)];
+  const compact = s => orgKey(s).replace(/ /g, '');
+  const wanted = new Set([...keys].map(k => k.replace(/ /g, '')));
+  return parties.some(p => wanted.has(compact(p)));
 }
 async function searchTribunals(searchNames, keys, lookbackMonths = Infinity) {
   const decisions = new Map(), failed = [];
@@ -562,7 +571,7 @@ const failedToSearch = [...linkedFailures.values()].sort((a, b) => phoenixRank(a
 const failedCompanyTribunals = { searched: [], failed_searches: [], not_searched: failedToSearch.slice(MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES).map(l => l.name) };
 for (const linked of failedToSearch.slice(0, MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES)) {
   const coNames = [linked.name, ...((await profile(linked.number))?.previous_company_names || []).map(x => x.name)];
-  const { decisions, failed } = await searchTribunals([...new Set(coNames.map(searchName))], new Set(coNames.map(orgKey)));
+  const { decisions, failed } = await searchTribunals(uniqueSearchNames(coNames), new Set(coNames.map(orgKey)));
   if (failed.length) { failedCompanyTribunals.failed_searches.push(linked.name); continue; }
   failedCompanyTribunals.searched.push(linked.number);
   for (const f of linked.entries) f.tribunal_decisions = decisions;

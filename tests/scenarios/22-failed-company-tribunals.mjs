@@ -7,16 +7,17 @@ const insolventCompany = (number, name, woundUp) => companyRoutes(
 );
 
 export default {
-  description: 'A director\'s failed company is searched for tribunal decisions naming it as respondent, at any date; one the director left long before it failed is not searched',
+  description: 'A director\'s failed company is searched for tribunal decisions naming it as respondent, at any date and however the respondent spaces its name; one the director left long before it failed is not searched',
   args: ['ZZ000022'],
   expect: {
     exit: 0,
     flags: ['medium director_insolvencies', 'low young_company', 'low failed_company_tribunals', 'info no_psc'],
     fields: {
-      'flags.2.text': 'EXAMPLE KITCHENS LTD, a failed company of EXAMPLE, Kappa: 2 employment tribunal decisions name it as respondent; read them for unpaid pay',
+      'flags.2.text': 'EXAMPLE KITCHENS LTD, a failed company of EXAMPLE, Kappa: 3 employment tribunal decisions name it as respondent; read them for unpaid pay',
       'flags.2.url': 'https://www.gov.uk/employment-tribunal-decisions/mr-f-claimant-v-example-kitchens-ltd-9900022-2024',
-      'directors.0.failed_companies.0.tribunal_decisions.length': 2,
-      'directors.0.failed_companies.0.tribunal_decisions.1': {
+      'directors.0.failed_companies.0.tribunal_decisions.length': 3,
+      'directors.0.failed_companies.0.tribunal_decisions.1.title': 'Mr J Claimant v Examplekitchens Limited (In Liquidation): 9900025/2023',
+      'directors.0.failed_companies.0.tribunal_decisions.2': {
         title: 'Ms G Claimant v Example Kitchens Limited: 9900023/2017', decision_date: '2017-11-01', categories: ['redundancy-pay'],
         url: 'https://www.gov.uk/employment-tribunal-decisions/ms-g-claimant-v-example-kitchens-limited-9900023-2017',
       },
@@ -35,9 +36,10 @@ export default {
     ...insolventCompany('ZZ100023', 'EXAMPLE KITCHENS LTD', '2015-04-01'),
     ...insolventCompany('ZZ100024', 'SAMPLE CATERING LTD', '2021-04-01'),
     '/api/search.json?q="EXAMPLE KITCHENS"': {
-      total: 3,
+      total: 4,
       results: [
         tribunalDecision('Mr F Claimant v Example Kitchens Ltd: 9900022/2024', '2024-03-01', ['unlawful-deduction-from-wages']),
+        tribunalDecision('Mr J Claimant v Examplekitchens Limited (In Liquidation): 9900025/2023', '2023-02-01', ['unlawful-deduction-from-wages']),
         tribunalDecision('Ms G Claimant v Example Kitchens Limited: 9900023/2017', '2017-11-01', ['redundancy-pay']),
         tribunalDecision('Example Kitchens Ltd v Mr H Former Employee: 9900024/2019', '2019-02-01', ['breach-of-contract']),
       ],
