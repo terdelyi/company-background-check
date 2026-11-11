@@ -291,7 +291,13 @@ for (const [i, f] of accountsFilings.entries()) {
     for (const [end, facts] of parseIxbrl(doc.text)) factsByPeriod.set(end, { ...facts, ...factsByPeriod.get(end) });
     if (i === 0) goingConcernDoubt = reportsGoingConcernDoubt(doc.text);
   }
-  accountsHistory.push({ year_end: f.description_values?.made_up_date || null, filed: f.date || null, format: doc.format });
+  // The public site serves the PDF without a key, so path B and the agent's own tools can open it
+  const pdf = doc.format === 'pdf' && f.transaction_id && {
+    url: `${SITE}/company/${number}/filing-history/${f.transaction_id}/document?format=pdf&download=0`,
+    pages: f.pages ?? null,
+    scanned: Boolean(f.paper_filed),
+  };
+  accountsHistory.push({ year_end: f.description_values?.made_up_date || null, filed: f.date || null, format: doc.format, ...(pdf && { document: pdf }) });
 }
 for (const year of accountsHistory) Object.assign(year, { net_assets: null, cash: null, employees: null, turnover: null, ...factsByPeriod.get(year.year_end) });
 const [latestYear, previousYear] = accountsHistory;

@@ -44,7 +44,7 @@ Exit codes: `0` JSON report on stdout, `2` no key or API unreachable (use path B
 
 The JSON has `company`, `directors` (active directors plus individual owners who are not directors, each with a `role`), `pscs`, `flags` (already sorted by severity, each with an evidence URL) and `meta` (caps hit, caveats). If `meta.people_without_officer_record` names anyone, the script found no officer record for that owner, so check their other companies by hand as in Path B step 3. Use the flags as given; add context, do not upgrade or drop them. There are two exceptions: the trading-name check below can raise a phoenix rating, and a tribunal decision you have read can raise the tribunal lead.
 
-`company.accounts.history` holds up to three years of accounts, newest first: net assets, cash, average employees and turnover where the filing tagged them, and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, open any `pdf` filing from the filing history and read the same four figures and the going-concern note by hand. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
+`company.accounts.history` holds up to three years of accounts, newest first: net assets, cash, average employees and turnover where the filing tagged them, and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, read any `pdf` year as in "Reading PDF accounts" below: the same four figures and the going-concern note. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
 
 `company.gazette` holds the corporate insolvency notices from The Gazette in the last five years that carry this company's number. A petition to wind up appears there weeks before Companies House shows anything, so the script flags one from the last 24 months as high and any other notice as medium. `meta.gazette_name_only` lists notices that matched a name but not the number: open each, and treat it as this company's only if the address or a director's name confirms it, then rate it as the script would and say you did so by hand. If `company.gazette.failed_searches` is not empty, search The Gazette by hand for those names and note it in "Not checked and limits".
 
@@ -65,12 +65,25 @@ The script raises these flags from iXBRL accounts. Apply them by hand to PDF acc
 - **Net assets fall** (medium): net assets more than halved since the year before, while still positive.
 - **Headcount fall** (medium): average employees down by more than a quarter on the year before. Skip it when the earlier year had fewer than 5 employees, where one person leaving is not a trend.
 
+### Reading PDF accounts
+
+A `pdf` year carries `document`: `url` downloads the PDF without an API key, `pages` is its length, and `scanned: true` means it was filed on paper and has no text layer. In path B, the filing history's "View PDF" link is the same file. Download it with `curl -sL -o accounts.pdf "<url>"`. The figures are on the balance sheet (net assets, cash), the profit and loss account (turnover) and the employees note, and the going-concern wording is in the directors' report and the audit report.
+
+Use the first of these that works where you are running:
+
+1. Your own file reader, if it shows you PDF pages as images. Read only the pages you need.
+2. If the PDF is not scanned: `pdftotext -layout accounts.pdf -`.
+3. If it is scanned, or no text came out: on macOS, run `osascript -l JavaScript <skill folder>/scripts/pdf-text-macos.js /absolute/path/accounts.pdf [first page] [last page]`. It needs nothing installed and recognises scanned pages with the system's own text recognition. Elsewhere, if `pdftoppm` and `tesseract` are installed, run `pdftoppm -r 200 -png accounts.pdf page`, then `tesseract <page image> -` on each page you need.
+4. If none of these works, do not install anything without asking the user. Write the year's format as "PDF (not read)" with n/a figures, link the PDF in "Verify next", and rate Coverage of this check as Caution.
+
+Recognised text can misread digits. Before using a figure, check it against a second place it appears: net assets also appear as total equity, and the next year's accounts repeat this year's figures as comparatives.
+
 ### Path B: public pages (no key, or the script exits 2)
 
 Some environments block outbound API calls. The same data is on the public Companies House site:
 
 1. Web-search `<company name> Companies House` and open the company's page on find-and-update.company-information.service.gov.uk.
-2. Read the overview (status, incorporation date, accounts and confirmation statement due dates, previous names), then the People, Filing history, Charges and Insolvency tabs. Open the latest two sets of accounts from the filing history and apply the accounts rules above. Search thegazette.co.uk for corporate insolvency notices under each current and previous name, and rate the ones that show the company number as the script does: a petition to wind up in the last 24 months is high, any other insolvency notice from the last five years is medium.
+2. Read the overview (status, incorporation date, accounts and confirmation statement due dates, previous names), then the People, Filing history, Charges and Insolvency tabs. Open the latest two sets of accounts from the filing history, read them as in "Reading PDF accounts" and apply the accounts rules above. Search thegazette.co.uk for corporate insolvency notices under each current and previous name, and rate the ones that show the company number as the script does: a petition to wind up in the last 24 months is high, any other insolvency notice from the last five years is medium.
 3. For an owner that is a UK company, open its Companies House page and check its status, filings, insolvency and Gazette notices the same way, up to three levels.
 4. Open the appointments page of each active director and of each individual owner (find owners with the officer search, matching name and birth month), and apply the phoenix test below by hand.
 5. Record in "Not checked and limits" that path B was used and what could not be opened.
@@ -160,7 +173,7 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 
 | Year end | Net assets | Cash | Avg employees | Turnover | Format |
 |---|---|---|---|---|---|
-| {YYYY-MM-DD} | {£} | {£} | {n} | {£} | {iXBRL, PDF (read by hand) or Unavailable} |
+| {YYYY-MM-DD} | {£} | {£} | {n} | {£} | {iXBRL, PDF (read by hand), PDF (not read) or Unavailable} |
 
 ## 3. Directors and owners
 

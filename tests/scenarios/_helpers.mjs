@@ -50,13 +50,15 @@ export const appointment =(number, name, status = 'active', extra = {}) => ({
 
 export const list = (...items) => ({ items, total_results: items.length });
 
-export const accountsFiling = (docId, madeUpDate, filed) => ({
+export const accountsFiling = (docId, madeUpDate, filed, extra = {}) => ({
+  transaction_id: `TX-${docId}`,
   category: 'accounts',
   type: 'AA',
   date: filed,
   description: 'accounts-with-accounts-type-small',
   description_values: { made_up_date: madeUpDate },
   links: { document_metadata: `https://frontend-doc-api.company-information.service.gov.uk/document/${docId}` },
+  ...extra,
 });
 
 // Document API routes: an iXBRL document is served through a redirect, as the real API does
