@@ -30,7 +30,7 @@ If the company is not UK-registered, skip step 1, say so in sections 2 and 3, an
 
 Needs Node 18 or later. Run `node --version` first: if it errors or hangs, `node` is probably a broken version-manager shim, so look for a real binary (for example under `~/.nvm/versions/node/*/bin/`) and call that by its full path, or tell the user Node is missing. Do not rewrite the script in another language.
 
-Also needs a free API key in the `COMPANIES_HOUSE_API_KEY` environment variable (created at developer.company-information.service.gov.uk). If it is not set, ask the user for it once. Never print the key or write it into the report.
+Also needs a free API key in the `COMPANIES_HOUSE_API_KEY` environment variable (created at developer.company-information.service.gov.uk). Do not check for it yourself: run the script, and if it exits 2 with "COMPANIES_HOUSE_API_KEY not set", ask the user for the key once, or use path B if they have none. Never print the key or write it into the report.
 
 Run `scripts/ch-check.mjs` from this skill's folder as it is, and write its output to a temp directory. Do not copy, edit or rewrite it: its checks are deterministic so results stay comparable between runs.
 

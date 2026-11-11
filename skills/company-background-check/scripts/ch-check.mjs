@@ -2,6 +2,8 @@
 // Companies House background check. Node 18+, no dependencies.
 // Usage: COMPANIES_HOUSE_API_KEY=... node ch-check.mjs "<company number or name>" [--aka "Brand, Product name"]
 // Exit: 0 = JSON report on stdout | 2 = no key / API unreachable | 3 = ambiguous name (candidates on stdout)
+// Skill evals run without network, so they answer requests from the repo's test fixtures instead.
+if (process.env.EVAL_CH_OFFLINE === '1') await import(new URL('../../../tests/offline-fetch.mjs', import.meta.url));
 const KEY = process.env.COMPANIES_HOUSE_API_KEY;
 const BASE = process.env.CH_API_BASE || 'https://api.company-information.service.gov.uk';
 const DOC_BASE = process.env.CH_DOC_API_BASE || 'https://document-api.company-information.service.gov.uk';

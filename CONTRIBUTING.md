@@ -31,13 +31,12 @@ The script is tested against the mock, not the live service, so run a change aga
 
 ## Skill evals
 
-The cases in `evals/` run the whole skill, in the format `claude plugin eval` reads. They are real, billed model runs. Start the mock first so the skill talks to it instead of the live API:
+The cases in `evals/` run the whole skill, in the format `claude plugin eval` reads. They are real, billed model runs:
 
 ```bash
-node tests/mock-server.mjs 8787 &
-export COMPANIES_HOUSE_API_KEY=test
-for v in CH_API_BASE CH_DOC_API_BASE GAZETTE_BASE GPG_BASE GOVUK_BASE; do export $v=http://127.0.0.1:8787; done
-claude plugin eval . --allow-tools Write,Edit,Bash
+claude plugin eval . --allow-tools Write Edit Bash WebSearch WebFetch
 ```
+
+Eval runs have no network, not even localhost, so each case sets `EVAL_CH_OFFLINE=1`. The script then answers its requests from the scenario fixtures through `tests/offline-fetch.mjs` instead of calling the registers. `node tests/run.mjs` runs the scenarios that way too, to keep it in step with the mock.
 
 The evals run on the real clock, so they only assert things that do not depend on a company's age.

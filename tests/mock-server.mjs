@@ -34,31 +34,38 @@ export function mergeRoutes(scenarios) {
   return routes;
 }
 
+/** @returns {{ status: number, headers: Record<string, string>, body: string, miss?: string }} */
+export function answer(routes, url, hasAuth) {
+  const key = routeKey(url);
+  if (!routes.has(key) && key.startsWith('/all-notices/')) {
+    return { status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify(GAZETTE_NO_HITS) };
+  }
+  if (!routes.has(key)) {
+    return { status: 404, headers: {}, body: '', miss: key };
+  }
+  const route = routes.get(key);
+  if (route.redirect) {
+    return { status: 302, headers: { location: route.redirect }, body: '' };
+  }
+  if (route.csv !== undefined) {
+    return { status: 200, headers: { 'content-type': 'text/csv' }, body: route.csv };
+  }
+  if (route.storage !== undefined) {
+    // like the signed storage URLs the Document API redirects to, which refuse a second auth header
+    const status = hasAuth ? 400 : 200;
+    return { status, headers: { 'content-type': 'application/xhtml+xml' }, body: status === 200 ? route.storage : '' };
+  }
+  return { status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify(route) };
+}
+
 export function startMock(routes, port = 0) {
   const misses = new Set();
   const server = createServer((req, res) => {
-    const key = routeKey(req.url);
-    if (!routes.has(key) && key.startsWith('/all-notices/')) {
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(GAZETTE_NO_HITS));
-      return;
+    const { status, headers, body, miss } = answer(routes, req.url, Boolean(req.headers.authorization));
+    if (miss) {
+      misses.add(miss);
     }
-    if (!routes.has(key)) {
-      misses.add(key);
-      res.writeHead(404).end();
-      return;
-    }
-    const route = routes.get(key);
-    if (route.redirect) {
-      res.writeHead(302, { location: route.redirect }).end();
-    } else if (route.csv !== undefined) {
-      res.writeHead(200, { 'content-type': 'text/csv' }).end(route.csv);
-    } else if (route.storage !== undefined) {
-      // like the signed storage URLs the Document API redirects to, which refuse a second auth header
-      const status = req.headers.authorization ? 400 : 200;
-      res.writeHead(status, { 'content-type': 'application/xhtml+xml' }).end(status === 200 ? route.storage : '');
-    } else {
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(route));
-    }
+    res.writeHead(status, headers).end(body);
   });
   return new Promise(resolve => server.listen(port, '127.0.0.1', () => {
     resolve({ server, misses, base: `http://127.0.0.1:${server.address().port}` });

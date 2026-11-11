@@ -67,15 +67,15 @@ function check(scenario, { code, stdout, stderr }) {
 const filter = process.argv[2] || '';
 const scenarios = (await loadScenarios()).filter(s => s.name.includes(filter));
 const { server, misses, base } = await startMock(mergeRoutes(scenarios));
+// The skill evals' offline fetch must answer like the mock server. Scenarios that point a base
+// URL somewhere unreachable or blank the key test failure paths it doesn't model.
+const offlineScenarios = scenarios.filter(s => !s.base && !s.env);
 let failed = 0;
 
-for (const scenario of scenarios) {
-  misses.clear();
-  const env = { COMPANIES_HOUSE_API_KEY: 'test-key', CH_API_BASE: scenario.base || base, CH_DOC_API_BASE: base, GAZETTE_BASE: base, GPG_BASE: base, GOVUK_BASE: base, CH_RETRY_MS: '0', FAKE_NOW, ...scenario.env };
-  const problems = check(scenario, await runScript(scenario.args, env));
+function report(label, scenario, problems) {
   if (problems.length) {
     failed++;
-    console.log(`FAIL ${scenario.name}: ${scenario.description}`);
+    console.log(`FAIL ${label}: ${scenario.description}`);
     for (const p of problems) {
       console.log(`  - ${p}`);
     }
@@ -83,10 +83,23 @@ for (const scenario of scenarios) {
       console.log(`  answered 404 (no route in the scenario): ${[...misses].join(', ')}`);
     }
   } else {
-    console.log(`ok   ${scenario.name}`);
+    console.log(`ok   ${label}`);
   }
 }
 
+for (const scenario of scenarios) {
+  misses.clear();
+  const env = { COMPANIES_HOUSE_API_KEY: 'test-key', CH_API_BASE: scenario.base || base, CH_DOC_API_BASE: base, GAZETTE_BASE: base, GPG_BASE: base, GOVUK_BASE: base, CH_RETRY_MS: '0', FAKE_NOW, ...scenario.env };
+  report(scenario.name, scenario, check(scenario, await runScript(scenario.args, env)));
+}
+
+for (const scenario of offlineScenarios) {
+  misses.clear();
+  const env = { EVAL_CH_OFFLINE: '1', CH_RETRY_MS: '0', FAKE_NOW };
+  report(`${scenario.name} (offline)`, scenario, check(scenario, await runScript(scenario.args, env)));
+}
+
 server.close();
-console.log(`\n${scenarios.length - failed}/${scenarios.length} scenarios passed`);
+const total = scenarios.length + offlineScenarios.length;
+console.log(`\n${total - failed}/${total} scenario runs passed`);
 process.exitCode = failed ? 1 : 0;
