@@ -431,6 +431,24 @@ const recentResignations = officers.filter(o => o.resigned_on && isDir(o) && mon
 if (recentResignations.length >= 2) flag('medium', 'director_churn', `${recentResignations.length} directors resigned in the last 12 months`, `${SITE}/company/${number}/officers`);
 if (!activeDirs.length) flag('high', 'no_directors', 'No active directors on record', `${SITE}/company/${number}/officers`);
 
+// A subsidiary of the target closing is group housekeeping, not a company cycled out from under its staff
+const groupOwnership = new Map();
+async function ownedByTarget(num, depth = 0) {
+  if (num === number) return true;
+  if (depth >= MAX_PARENT_LEVELS || groupOwnership.has(num)) return groupOwnership.get(num) ?? false;
+  const owners = (await get(`/company/${num}/persons-with-significant-control?items_per_page=50`))?.items || [];
+  let owned = false;
+  for (const owner of owners) {
+    if (!owner.name || (owner.kind || '').startsWith('individual')) continue;
+    // Subsidiaries often record their owner by name only, and that owner may be dissolved by now too
+    const ownerNumber = companyNumberKey(owner.identification?.registration_number)
+      || [(await searchCompanies(owner.name)).filter(i => bareName(i.title) === bareName(owner.name))].find(m => m.length === 1)?.[0].company_number;
+    if (ownerNumber && await ownedByTarget(ownerNumber, depth + 1)) { owned = true; break; }
+  }
+  groupOwnership.set(num, owned);
+  return owned;
+}
+
 const profiles = new Map();
 let lookups = 0, skippedLookups = 0;
 async function profile(num) {
@@ -524,7 +542,7 @@ for (const o of people) {
     if (failedOn && c.date_of_creation && months(failedOn, c.date_of_creation) <= PHOENIX_WINDOW_MONTHS) signals.push(`target incorporated within ${PHOENIX_WINDOW_MONTHS} months of its ${insolventFrom ? 'insolvency' : 'closure'}`);
     else if (!failedOn && wasInsolvent && ageMonths !== null && ageMonths <= PHOENIX_WINDOW_MONTHS) signals.push('target incorporated recently while this company is insolvent');
     const phoenix = !wasInsolvent || leftBeforeFailure ? null : signals.includes('similar name') && signals.length >= 3 ? 'strong' : signals.length >= 2 ? 'possible' : null;
-    if (sameName || samePostcode) related.push({ name: p.company_name, number: p.company_number, status: p.company_status, incorporated: p.date_of_creation || null, ceased: p.date_of_cessation || null, closed: !!closed, insolvent: !!wasInsolvent, url: `${SITE}/company/${p.company_number}` });
+    if (sameName || samePostcode) related.push({ name: p.company_name, number: p.company_number, status: p.company_status, incorporated: p.date_of_creation || null, ceased: p.date_of_cessation || null, closed: !!closed, insolvent: !!wasInsolvent, group_member: Boolean(closed && !wasInsolvent && await ownedByTarget(p.company_number)), url: `${SITE}/company/${p.company_number}` });
     if (!closed) continue; // active companies only count towards the cycling check below
     if (!wasInsolvent && signals.length < 2) continue; // plain dissolved company, nothing to report
     failed.push({ name: p.company_name, number: p.company_number, status: p.company_status, insolvent_from: insolventFrom, ceased: p.date_of_cessation || null,
@@ -535,12 +553,13 @@ for (const o of people) {
   if (insolventOnly.length) flag('medium', 'director_insolvencies', `${o.name}: director of ${insolventOnly.length} other compan${insolventOnly.length > 1 ? 'ies' : 'y'} with insolvency history (${insolventOnly.map(f => f.name).join(', ')})`, url);
   // serial pattern: a chain of related companies (similar name or same registered postcode) opened and closed one after another
   related.sort((x, y) => (x.incorporated || '').localeCompare(y.incorporated || ''));
-  const closedRelated = related.filter(r => r.closed && (!r.ceased || monthsAgo(r.ceased) <= CYCLE_LOOKBACK_MONTHS));
+  const cycleCandidates = related.filter(r => !r.group_member), groupMembers = related.length - cycleCandidates.length;
+  const closedRelated = cycleCandidates.filter(r => r.closed && (!r.ceased || monthsAgo(r.ceased) <= CYCLE_LOOKBACK_MONTHS));
   const cycleKey = closedRelated.map(r => r.number).sort().join(',');
   if (closedRelated.length >= 2 && !cyclesSeen.has(cycleKey)) {
     cyclesSeen.add(cycleKey);
     const span = r => `${(r.incorporated || '?').slice(0, 4)}-${r.ceased ? r.ceased.slice(0, 4) : r.closed ? 'insolvent' : 'active'}`;
-    flag(closedRelated.length >= 3 || closedRelated.some(r => r.insolvent) ? 'high' : 'medium', 'company_cycling', `${o.name}: ${closedRelated.length} closed companies in the last 10 years with a similar name or the same registered postcode - ${related.map(r => `${r.name} (${span(r)})`).join(', ')}`, url);
+    flag(closedRelated.length >= 3 || closedRelated.some(r => r.insolvent) ? 'high' : 'medium', 'company_cycling', `${o.name}: ${closedRelated.length} closed companies in the last 10 years with a similar name or the same registered postcode - ${cycleCandidates.map(r => `${r.name} (${span(r)})`).join(', ')}${groupMembers ? ` (${groupMembers} closed subsidiar${groupMembers > 1 ? 'ies' : 'y'} of the target left out)` : ''}`, url);
   }
   if (dissolved.length >= 5 && dissolved.length / others.length >= 0.5) flag('low', 'serial_dissolutions', `${o.name}: ${dissolved.length} of ${others.length} other appointments are dissolved companies`, url);
 
