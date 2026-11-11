@@ -30,7 +30,7 @@ claude.ai: zip the `skills/company-background-check` folder and upload it under 
 
 ## Setup
 
-You need Node 22 or later (nothing to install) and a free Companies House API key. Register on the [Companies House developer hub](https://developer.company-information.service.gov.uk/get-started), create a live application and add a REST key to it, then make it available as `COMPANIES_HOUSE_API_KEY`. In Claude Code, add it to `~/.claude/settings.json`:
+You need Node 22 or later (nothing to install) and a free Companies House API key. Sign in or register on the [Companies House developer hub](https://developer.company-information.service.gov.uk/manage-applications), create a live application and add a REST key to it, then make it available as `COMPANIES_HOUSE_API_KEY`. In Claude Code, add it to `~/.claude/settings.json`:
 
 ```json
 {
