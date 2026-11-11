@@ -1,6 +1,6 @@
-<p align="center"><img src=".github/logo.png" alt="" width="160"></p>
+<img src=".github/banner.png" alt="Company background check: vet a UK employer before you sign" width="740">
 
-# company-background-check
+# Company background check
 
 [![skills.sh](https://skills.sh/b/terdelyi/company-background-check)](https://skills.sh/terdelyi/company-background-check)
 
