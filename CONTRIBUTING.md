@@ -4,7 +4,7 @@
 
 - `skills/company-background-check/`: the skill itself, and the only folder that gets installed
   - `SKILL.md`: the instructions and the report outline
-  - `scripts/ch-check.mjs`: the Companies House check. Node 18+, no dependencies, nothing to build
+  - `scripts/ch-check.mjs`: the Companies House check. No dependencies, nothing to build. It runs on Node 18+ (the first with built-in `fetch`), but the README asks for 22+ because older versions are end of life
   - `references/report-shell.html`: the page template the report is filled into
 - `tests/`: the mock API, fictional scenarios and the script test runner
 - `evals/`: whole-skill test cases
