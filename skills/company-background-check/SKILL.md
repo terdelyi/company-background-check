@@ -217,6 +217,14 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 |---|---|---|---|---|---|---|---|
 | {D Mon YYYY} | {£} | {£} | {£} | {n} months | {n} | {£} | {iXBRL, PDF (read by hand), PDF (not read) or Unavailable} |
 
+Under the table, one short paragraph per point, in everyday words, for the latest year:
+
+- **Net assets:** "Net assets is everything the company owns minus everything it owes." When most of it is goodwill or another intangible, name it and say what it is ("the value the company puts on its brand, customers and software"), say how much of it the company valued itself and what was paid for it if a filing shows that, and give the figure without it.
+- **Net current assets:** "Net current assets compares the bills due within a year with the cash and customer payments due in the same time." When it is negative, say "A negative figure means the bills are bigger", by how much, and name the largest bill if the notes show it, such as tax owed.
+- **Missing figures:** which figures the accounts do not show, and the year's profit or loss if it can be read from the notes.
+
+Avoid "revaluation reserve", "net current liabilities", "retained profit" and "profit and loss account" here. The plain sentence carries the meaning.
+
 ## 3. Directors and owners
 
 | Director | Since | Other companies | Notes |
