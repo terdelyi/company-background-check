@@ -10,6 +10,7 @@ export default {
     exit: 0,
     flags: ['high phoenix_strong'],
     fields: {
+      'flags.0.record': 'director',
       'directors.0.failed_companies.length': 1,
       'directors.0.failed_companies.0.number': 'ZZ100003',
       'directors.0.failed_companies.0.phoenix': 'strong',

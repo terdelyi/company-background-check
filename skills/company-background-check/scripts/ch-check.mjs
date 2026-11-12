@@ -18,6 +18,8 @@ const GOVUK_BASE = process.env.GOVUK_BASE || 'https://www.gov.uk', GOVUK_SITE = 
 const SPONSOR_REGISTER_PAGE = '/government/publications/register-of-licensed-sponsors-workers', TRIBUNAL_LOOKBACK_MONTHS = 72, MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES = 10;
 const MAX_PARENT_LEVELS = 3;
 const USER_AGENT = 'company-background-check/1.0.0 (+https://github.com/terdelyi/company-background-check)';
+// tests set this to 0 so the pauses between public requests don't slow them down
+const PUBLIC_DELAY_MS = Number(process.env.PUBLIC_DELAY_MS ?? 1000);
 const UK_REGISTER = /england|wales|scotland|northern ireland|united kingdom|great britain|\buk\b|companies house|registrar of companies/i;
 // iXBRL concept names by local name, preferred first; older UK GAAP filings use the later ones
 const ACCOUNT_CONCEPTS = {
@@ -119,7 +121,7 @@ const money = n => `${n < 0 ? '-' : ''}£${Math.abs(n).toLocaleString('en-GB')}`
 // Dropped connections are common on these services and a retry usually succeeds.
 async function getPublic(url, accept = 'application/json') {
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) await sleep(1000 * 2 ** attempt);
+    if (attempt) await sleep(PUBLIC_DELAY_MS * 2 ** attempt);
     requests++;
     try {
       const res = await fetch(url, { headers: { Accept: accept, 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(20000) });
@@ -132,7 +134,7 @@ async function getPublic(url, accept = 'application/json') {
 // The Gazette's fair use policy allows 5 requests per 10 seconds.
 let lastGazetteRequest = 0;
 async function getGazette(path) {
-  const wait = lastGazetteRequest + 2000 - Date.now();
+  const wait = lastGazetteRequest + 2 * PUBLIC_DELAY_MS - Date.now();
   if (wait > 0) await sleep(wait);
   lastGazetteRequest = Date.now();
   return getPublic(GAZETTE_BASE + path);
@@ -646,6 +648,9 @@ if (!pscs.length) flag('info', 'no_psc', 'No active person with significant cont
 
 const order = { high: 0, medium: 1, low: 2, info: 3 };
 flags.sort((a, b) => order[a.severity] - order[b.severity]);
+// whose record each flag comes from, so a reader can tell the employer's own findings from a parent's or a director's other companies
+const DIRECTOR_RECORD = /^(phoenix_|company_cycling$|director_insolvencies$|serial_dissolutions$|failed_company_tribunals$|disqualification$)/;
+for (const f of flags) f.record = f.code.startsWith('parent_') ? 'parent' : DIRECTOR_RECORD.test(f.code) ? 'director' : 'own';
 console.log(JSON.stringify({
   checked_at: new Date().toISOString().slice(0, 10),
   company: {

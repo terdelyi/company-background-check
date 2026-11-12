@@ -70,11 +70,13 @@
   h2 { margin: 44px 0 10px; font-family: var(--serif); font-weight: 600; font-size: 1.55rem; line-height: 1.2; }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .93rem; }
-  th, td { padding: 8px 12px 8px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
+  th, td { padding: 12px 16px 12px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
   th:last-child, td:last-child { padding-right: 0; }
   thead th { font-size: .8rem; font-weight: 600; color: var(--muted); border-bottom-color: var(--ink); }
   tbody th { font-weight: 600; width: 13.5em; }
   .nowrap { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); font-size: .87rem; }
+  tbody tr:last-child > * { border-bottom: 0; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   .evidence { width: 11em; }
   .subhead { margin: 26px 0 6px; font-size: 1rem; font-weight: 650; }
@@ -83,8 +85,15 @@
   .callout h3 { margin: 0 0 4px; font-size: 1rem; }
   .callout ul { margin: 6px 0 8px; padding-left: 1.2em; }
   .callout p:last-child { margin: 0; }
-  .plain-list { margin: 0; padding-left: 1.2em; }
-  .plain-list li { margin-bottom: .45em; }
+  .tag { display: inline-block; margin-left: 4px; padding: 0 8px; border-radius: 999px; background: rgba(255,255,255,.65); border: 1px solid color-mix(in srgb, currentColor 35%, transparent); color: var(--muted); font-size: .75rem; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
+  .callout .tag { color: var(--high); }
+  .callout--none .tag { color: var(--low); }
+  .plain-list { margin: 0; padding: 0; list-style: none; }
+  .plain-list li, .callout li { margin-bottom: 1.1em; }
+  .callout ul { list-style: none; padding: 0; }
+  ol.plain-list { list-style: decimal; padding-left: 1.2em; }
+  .plain-list li > strong:first-child, .callout li > strong:first-child { display: block; margin-bottom: 2px; font-size: .92rem; font-weight: 650; color: var(--ink); }
+  .flags td > strong:first-child { display: block; font-weight: 600; }
   .note { color: var(--muted); font-size: .9rem; }
   .table-wrap + .note { margin-top: 10px; }
   .sources { columns: 2; column-gap: 32px; margin: 0; padding-left: 1.2em; font-size: .9rem; }
@@ -134,7 +143,7 @@
     <dl class="meta">
       <div><dt>Company number</dt><dd>{number or n/a}</dd></div>
       <div><dt>Jurisdiction</dt><dd>{jurisdiction}</dd></div>
-      <div><dt>Checked on</dt><dd>{YYYY-MM-DD}</dd></div>
+      <div><dt>Checked on</dt><dd>{D Mon YYYY}</dd></div>
       <!-- Only when a trading name was found that differs from the registered name. Never products. -->
       <div class="meta__wide"><dt>Trades as</dt><dd>{trading names}</dd></div>
     </dl>
@@ -175,8 +184,8 @@
     <div class="table-wrap"><table class="flags">
       <thead><tr><th>Severity</th><th>Flag</th><th class="evidence">Evidence</th></tr></thead>
       <tbody>
-        <!-- chip class: chip--high, chip--medium, chip--low or chip--info -->
-        <tr><td><span class="chip chip--{severity}">{Severity}</span></td><td><strong>{Short name.}</strong> {What was found.}</td><td class="evidence"><a href="{url}">{source}</a></td></tr>
+        <!-- chip class: chip--high, chip--medium, chip--low or chip--info. A finding that is not the employer's own record gets a tag after its name: Parent company, Group company, Director's other company or Another company. -->
+        <tr><td><span class="chip chip--{severity}">{Severity}</span></td><td><strong>{Short name} <span class="tag">{Whose record, if not the employer's}</span></strong> {What was found.}</td><td class="evidence"><a href="{url}">{source}</a></td></tr>
       </tbody>
     </table></div>
   </section>
@@ -190,15 +199,15 @@
     <div class="table-wrap"><table>
       <thead><tr><th>Year end</th><th class="num">Net assets</th><th class="num">Net current assets</th><th class="num">Cash</th><th class="num">Payroll cover</th><th class="num">Avg employees</th><th class="num">Turnover</th><th>Format</th></tr></thead>
       <!-- Newest first, up to three years. "n/a" where a figure was not tagged or stated. Payroll cover is months of staff costs the cash would pay. Format: iXBRL, PDF (read by hand) or Unavailable. -->
-      <tbody><tr><td class="nowrap">{YYYY-MM-DD}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{n} months</td><td class="nowrap num">{n}</td><td class="nowrap num">{£}</td><td>{Format}</td></tr></tbody>
+      <tbody><tr><td class="nowrap">{D Mon YYYY}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{n} months</td><td class="nowrap num">{n}</td><td class="nowrap num">{£}</td><td>{Format}</td></tr></tbody>
     </table></div>
   </section>
 
   <section>
     <h2>Directors and owners</h2>
     <div class="table-wrap"><table>
-      <thead><tr><th>Name</th><th>Role</th><th>Since</th><th class="num">Other roles</th><th class="num">Dissolved</th><th class="num">Insolvent</th><th>Notes</th></tr></thead>
-      <tbody><tr><td class="nowrap">{Name}</td><td>{Role}</td><td class="nowrap">{Date}</td><td class="num">{n}</td><td class="num">{n}</td><td class="num">{n}</td><td>{Notes}</td></tr></tbody>
+      <thead><tr><th>Director</th><th>Since</th><th>Other companies</th><th>Notes</th></tr></thead>
+      <tbody><tr><td class="nowrap">{Name}<br><span class="muted">{Role}</span></td><td class="nowrap">{D Mon YYYY}</td><td class="nowrap">{n} ({n} closed, {n} insolvent)</td><td>{One or two short sentences}</td></tr></tbody>
     </table></div>
     <p class="note"><strong>Owners (PSCs):</strong> {names and level of control}</p>
     <p class="note"><strong>Group:</strong> {UK parents in order up the chain, each with its status and any finding, or "No corporate owner". Owners not followed and why.}</p>
@@ -206,7 +215,8 @@
     <div class="callout">
       <h3>Phoenix check: {none found|possible|strong|serial}</h3>
       <p>{One sentence naming the companies, in date order with their years.}</p>
-      <ul><li><strong>{Signal.}</strong> {Evidence, linked.}</li></ul>
+      <!-- A point that adds context but does not count towards the rating gets <span class="tag">Context</span> after its title. -->
+      <ul><li><strong>{Signal}</strong> {Evidence, linked.}</li></ul>
     </div>
   </section>
 
@@ -216,18 +226,18 @@
   <section>
     <h2>Web and LinkedIn presence</h2>
     <!-- Always these five items in this order: Website, LinkedIn, Hiring, Size (gender pay gap), Visa sponsor. -->
-    <ul class="plain-list"><li><strong>{Website|LinkedIn|Hiring|Size (gender pay gap)|Visa sponsor}:</strong> {What was found.}</li></ul>
+    <ul class="plain-list"><li><strong>{Website|LinkedIn|Hiring|Size (gender pay gap)|Visa sponsor}</strong> {What was found.}</li></ul>
   </section>
 
   <section>
     <h2>Verify next</h2>
     <p class="note">The checks that would most change this picture, most useful first.</p>
-    <ol class="plain-list"><li><strong>{Action.}</strong> {Why it matters, with a link to where to do it.}</li></ol>
+    <ol class="plain-list"><li><strong>{Action}</strong> {Why it matters, with a link to where to do it.}</li></ol>
   </section>
 
   <section>
     <h2>Not checked and limits</h2>
-    <ul class="plain-list"><li><strong>{Label.}</strong> {What was not checked and why.}</li></ul>
+    <ul class="plain-list"><li><strong>{Label}</strong> {What was not checked and why.}</li></ul>
   </section>
 
   <section>
@@ -236,7 +246,7 @@
   </section>
 
   <footer class="disclaimer">
-    <p>This report was put together by an AI assistant with the <a href="https://github.com/terdelyi/company-background-check">company-background-check</a> skill, from public sources on {YYYY-MM-DD}. It tries hard to get things right and links its evidence, but it can miss things or get them wrong, and matches made on names are leads, not findings. Check anything important at the source before you act on it. It is not legal or financial advice.</p>
+    <p>This report was put together by an AI assistant with the <a href="https://github.com/terdelyi/company-background-check">company-background-check</a> skill, from public sources on {D Mon YYYY}. It tries hard to get things right and links its evidence, but it can miss things or get them wrong, and matches made on names are leads, not findings. Check anything important at the source before you act on it. It is not legal or financial advice.</p>
   </footer>
 
 </main>
