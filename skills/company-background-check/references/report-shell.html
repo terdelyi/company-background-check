@@ -81,13 +81,11 @@
   .evidence { width: 11em; }
   .subhead { margin: 26px 0 6px; font-size: 1rem; font-weight: 650; }
   .callout { margin: 16px 0 0; padding: 14px 18px; border-left: 6px solid var(--high); background: var(--high-tint); }
-  .callout--none { border-left-color: var(--low); background: var(--low-tint); }
   .callout h3 { margin: 0 0 4px; font-size: 1rem; }
   .callout ul { margin: 6px 0 8px; padding-left: 1.2em; }
   .callout p:last-child { margin: 0; }
   .tag { display: inline-block; margin-left: 4px; padding: 0 8px; border-radius: 999px; background: rgba(255,255,255,.65); border: 1px solid color-mix(in srgb, currentColor 35%, transparent); color: var(--muted); font-size: .75rem; font-weight: 600; vertical-align: 1px; white-space: nowrap; }
   .callout .tag { color: var(--high); }
-  .callout--none .tag { color: var(--low); }
   .plain-list { margin: 0; padding: 0; list-style: none; }
   .plain-list li, .callout li { margin-bottom: 1.1em; }
   .callout ul { list-style: none; padding: 0; }
@@ -168,7 +166,7 @@
     <!-- Always these eight areas in this order. class: area--concern, area--caution, area--clear or area--nodata. -->
     <ul class="areas">
       <li class="area area--{status}"><h3>Company record</h3><span class="status">{Concern|Caution|Clear|No data}</span><p>{One line.}</p></li>
-      <li class="area area--{status}"><h3>People and phoenix check</h3><span class="status">{Status}</span><p>{One line.}</p></li>
+      <li class="area area--{status}"><h3>Directors and owners</h3><span class="status">{Status}</span><p>{One line.}</p></li>
       <li class="area area--{status}"><h3>Money</h3><span class="status">{Status}</span><p>{One line.}</p></li>
       <li class="area area--{status}"><h3>Redundancies</h3><span class="status">{Status}</span><p>{One line.}</p></li>
       <li class="area area--{status}"><h3>Legal and insolvency notices</h3><span class="status">{Status}</span><p>{One line.}</p></li>
@@ -211,7 +209,7 @@
     </table></div>
     <p class="note"><strong>Owners (PSCs):</strong> {names and level of control}</p>
     <p class="note"><strong>Group:</strong> {UK parents in order up the chain, each with its status and any finding, or "No corporate owner". Owners not followed and why.}</p>
-    <!-- Add class callout--none when nothing was found. -->
+    <!-- Only when a phoenix or cycling pattern was found. Otherwise leave the whole block out. -->
     <div class="callout">
       <h3>Phoenix check: {none found|possible|strong|serial}</h3>
       <p>{One sentence naming the companies, in date order with their years.}</p>
