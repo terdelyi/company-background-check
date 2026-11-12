@@ -5,11 +5,11 @@ const upsilonDob = { month: 9, year: 1969 };
 const goingConcernNote = 'These conditions indicate the existence of a material uncertainty which may cast significant doubt on the company\'s ability to continue as a going concern.';
 
 export default {
-  description: 'A going-concern material uncertainty, net liabilities and a 40% drop in staff each raise a flag; a negative balance is not also counted as a fall',
+  description: 'A going-concern material uncertainty, net liabilities and a 40% drop in staff each raise a flag; a negative balance is not also counted as a fall, and 18 staff in a company that owes more than it owns is a lead to check',
   args: ['ZZ000012'],
   expect: {
     exit: 0,
-    flags: ['high going_concern', 'medium negative_net_assets', 'medium headcount_fall'],
+    flags: ['high going_concern', 'medium negative_net_assets', 'medium headcount_fall', 'low employer_without_assets'],
     fields: {
       'company.accounts.history.0.net_assets': -85400,
       'company.accounts.going_concern_doubt': true,

@@ -17,6 +17,7 @@ const GPG_BASE = process.env.GPG_BASE || 'https://gender-pay-gap.service.gov.uk'
 const GOVUK_BASE = process.env.GOVUK_BASE || 'https://www.gov.uk', GOVUK_SITE = 'https://www.gov.uk';
 const SPONSOR_REGISTER_PAGE = '/government/publications/register-of-licensed-sponsors-workers', TRIBUNAL_LOOKBACK_MONTHS = 72, MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES = 10;
 const MAX_PARENT_LEVELS = 3;
+const USER_AGENT = 'company-background-check/1.0.0 (+https://github.com/terdelyi/company-background-check)';
 const UK_REGISTER = /england|wales|scotland|northern ireland|united kingdom|great britain|\buk\b|companies house|registrar of companies/i;
 // iXBRL concept names by local name, preferred first; older UK GAAP filings use the later ones
 const ACCOUNT_CONCEPTS = {
@@ -24,6 +25,9 @@ const ACCOUNT_CONCEPTS = {
   cash: ['CashBankOnHand', 'CashBankInHand'],
   employees: ['AverageNumberEmployeesDuringPeriod', 'EmployeesTotal'],
   turnover: ['TurnoverRevenue', 'TurnoverGrossOperatingRevenue', 'Turnover'],
+  net_current_assets: ['NetCurrentAssetsLiabilities'],
+  profit: ['ProfitLoss', 'ProfitLossOnOrdinaryActivitiesAfterTax'],
+  staff_costs: ['StaffCostsEmployeeBenefitsExpense', 'StaffCosts', 'WagesSalaries'],
 };
 const INSOLVENT = ['liquidation', 'administration', 'receivership', 'insolvency-proceedings', 'voluntary-arrangement'];
 const STOP = new Set(['ltd', 'limited', 'plc', 'llp', 'the', 'and', 'company', 'group', 'holdings', 'services', 'solutions', 'international', 'global',
@@ -112,14 +116,27 @@ function reportsGoingConcernDoubt(doc) {
 const money = n => `${n < 0 ? '-' : ''}£${Math.abs(n).toLocaleString('en-GB')}`;
 
 // The Gazette and gov.uk registers are separate services: a failure only loses that check, never the run.
+// Dropped connections are common on these services and a retry usually succeeds.
 async function getPublic(url, accept = 'application/json') {
-  requests++;
-  try {
-    const res = await fetch(url, { headers: { Accept: accept } });
-    return res.ok ? await res.text() : null;
-  } catch { return null; }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) await sleep(1000 * 2 ** attempt);
+    requests++;
+    try {
+      const res = await fetch(url, { headers: { Accept: accept, 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(20000) });
+      if (res.ok) return await res.text();
+      if (res.status !== 429 && res.status < 500) return null;
+    } catch { /* retry */ }
+  }
+  return null;
 }
-const getGazette = path => getPublic(GAZETTE_BASE + path);
+// The Gazette's fair use policy allows 5 requests per 10 seconds.
+let lastGazetteRequest = 0;
+async function getGazette(path) {
+  const wait = lastGazetteRequest + 2000 - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastGazetteRequest = Date.now();
+  return getPublic(GAZETTE_BASE + path);
+}
 
 // A members' voluntary liquidation comes with a declaration of solvency: groups use it to close
 // subsidiaries they no longer need, so it is not the insolvency the phoenix and insolvency checks look for.
@@ -145,6 +162,9 @@ function registerFlags(co, num, insolvency, filingItems) {
     else if (d.startsWith('gazette-notice-voluntary')) add('high', 'voluntary_strike_off', `Voluntary strike-off application on ${f.date}`, filingsUrl);
     else if (d.includes('strike-off-suspended')) add('medium', 'strike_off_suspended', `Strike-off action suspended on ${f.date}`, filingsUrl);
   }
+  // lengthening the financial year pushes back the date the next accounts are due, which can delay bad news
+  const extensions = (filingItems || []).filter(f => f.type === 'AA01' && /extended/.test(f.description || '') && f.date && monthsAgo(f.date) <= 60);
+  if (extensions.length) add(extensions.length >= 2 ? 'medium' : 'low', 'year_end_extended', `Financial year extended ${extensions.length} time${extensions.length > 1 ? 's' : ''} in the last 5 years (${extensions.map(f => `${f.date} to a year end of ${f.description_values?.new_date || 'unknown'}`).join(' and ')}), which delays the next accounts`, filingsUrl);
   return out;
 }
 
@@ -288,8 +308,15 @@ if (c.accounts?.last_accounts?.type === 'dormant') flag('medium', 'dormant_accou
 if (ageMonths !== null && ageMonths < 24) flag('low', 'young_company', `Incorporated ${c.date_of_creation} (${Math.round(ageMonths)} months old)`);
 const recentRenames = (c.previous_company_names || []).filter(p => p.ceased_on && monthsAgo(p.ceased_on) <= 36);
 if (recentRenames.length >= 2) flag('medium', 'renames', `${recentRenames.length} name changes in the last 3 years: ${recentRenames.map(p => p.name).join(', ')}`);
-const outstandingCharges = (charges?.items || []).filter(x => x.status === 'outstanding').length;
-if (outstandingCharges) flag('info', 'charges', `${outstandingCharges} outstanding charge(s) (secured lending)`, `${SITE}/company/${number}/charges`);
+const outstandingChargeItems = (charges?.items || []).filter(x => x.status === 'outstanding')
+  .map(x => ({ created_on: x.created_on || null, lenders: (x.persons_entitled || []).map(p => p.name), type: x.classification?.description || null }))
+  .sort((x, y) => (y.created_on || '').localeCompare(x.created_on || ''));
+const outstandingCharges = outstandingChargeItems.length;
+const chargesUrl = `${SITE}/company/${number}/charges`;
+if (outstandingCharges) flag('info', 'charges', `${outstandingCharges} outstanding charge(s) (secured lending), latest ${outstandingChargeItems[0].created_on || 'undated'} to ${outstandingChargeItems[0].lenders.join(', ') || 'unnamed lender'}`, chargesUrl);
+// fresh secured borrowing can mean a lender wanted security before extending more credit
+const recentCharges = outstandingChargeItems.filter(x => x.created_on && monthsAgo(x.created_on) <= 12);
+if (recentCharges.length) flag('low', 'recent_charge', `${recentCharges.length} new charge(s) in the last 12 months: ${recentCharges.map(x => `${x.created_on} to ${x.lenders.join(', ') || 'unnamed lender'}`).join(' and ')}`, chargesUrl);
 
 // --- accounts: newest filing first; a newer filing's comparatives fill years whose own filing is PDF-only
 const accountsFilings = (filings?.items || []).filter(f => f.category === 'accounts' && f.type === 'AA' && f.links?.document_metadata).slice(0, ACCOUNTS_FILINGS);
@@ -309,13 +336,21 @@ for (const [i, f] of accountsFilings.entries()) {
   };
   accountsHistory.push({ year_end: f.description_values?.made_up_date || null, filed: f.date || null, format: doc.format, ...(pdf && { document: pdf }) });
 }
-for (const year of accountsHistory) Object.assign(year, { net_assets: null, cash: null, employees: null, turnover: null, ...factsByPeriod.get(year.year_end) });
+for (const year of accountsHistory) {
+  Object.assign(year, Object.fromEntries(Object.keys(ACCOUNT_CONCEPTS).map(k => [k, null])), factsByPeriod.get(year.year_end));
+  // how long cash on hand would cover the wage bill, the closest public proxy for the risk of salaries going unpaid
+  year.payroll_months_in_cash = year.cash !== null && year.staff_costs > 0 ? Math.round(year.cash / (year.staff_costs / 12) * 10) / 10 : null;
+}
 const [latestYear, previousYear] = accountsHistory;
 const filingsUrl = `${SITE}/company/${number}/filing-history`;
 if (goingConcernDoubt) flag('high', 'going_concern', `Accounts made up to ${latestYear.year_end} report a material uncertainty about going concern`, filingsUrl);
 if (latestYear?.net_assets < 0) flag('medium', 'negative_net_assets', `Net liabilities of ${money(-latestYear.net_assets)} at ${latestYear.year_end}`, filingsUrl);
 if (previousYear?.net_assets > 0 && latestYear.net_assets !== null && latestYear.net_assets >= 0 && latestYear.net_assets < previousYear.net_assets * 0.5) {
   flag('medium', 'net_assets_fall', `Net assets fell from ${money(previousYear.net_assets)} to ${money(latestYear.net_assets)} (${previousYear.year_end} to ${latestYear.year_end})`, filingsUrl);
+}
+// Staff employed by a company with little of its own is the setup that leaves them owed money if it fails
+if (latestYear?.employees >= 10 && (latestYear.net_assets < 0 || latestYear.net_current_assets < 0)) {
+  flag('low', 'employer_without_assets', `Employs ${latestYear.employees} people but its ${latestYear.net_assets < 0 ? 'debts exceed everything it owns' : 'short-term debts exceed its short-term assets'} at ${latestYear.year_end}: check which company owns the brand, contracts and other assets`, filingsUrl);
 }
 // Measured from the peak so cuts spread over several years still show
 const headcountPeak = accountsHistory.slice(1).reduce((peak, year) => (year.employees ?? -1) > (peak?.employees ?? -1) ? year : peak, null);
@@ -431,10 +466,11 @@ const recentResignations = officers.filter(o => o.resigned_on && isDir(o) && mon
 if (recentResignations.length >= 2) flag('medium', 'director_churn', `${recentResignations.length} directors resigned in the last 12 months`, `${SITE}/company/${number}/officers`);
 if (!activeDirs.length) flag('high', 'no_directors', 'No active directors on record', `${SITE}/company/${number}/officers`);
 
-// A subsidiary of the target closing is group housekeeping, not a company cycled out from under its staff
+// A company in the target's own group closing (a subsidiary, or a sister under the same parent) is group housekeeping,
+// not a company cycled out from under its staff
 const groupOwnership = new Map();
-async function ownedByTarget(num, depth = 0) {
-  if (num === number) return true;
+async function inTargetGroup(num, depth = 0) {
+  if (seenInGroup.has(num)) return true;
   if (depth >= MAX_PARENT_LEVELS || groupOwnership.has(num)) return groupOwnership.get(num) ?? false;
   const owners = (await get(`/company/${num}/persons-with-significant-control?items_per_page=50`))?.items || [];
   let owned = false;
@@ -443,7 +479,7 @@ async function ownedByTarget(num, depth = 0) {
     // Subsidiaries often record their owner by name only, and that owner may be dissolved by now too
     const ownerNumber = companyNumberKey(owner.identification?.registration_number)
       || [(await searchCompanies(owner.name)).filter(i => bareName(i.title) === bareName(owner.name))].find(m => m.length === 1)?.[0].company_number;
-    if (ownerNumber && await ownedByTarget(ownerNumber, depth + 1)) { owned = true; break; }
+    if (ownerNumber && await inTargetGroup(ownerNumber, depth + 1)) { owned = true; break; }
   }
   groupOwnership.set(num, owned);
   return owned;
@@ -528,6 +564,8 @@ for (const o of people) {
     const failedOn = insolventFrom || p.date_of_cessation || null;
     // someone who left well before the failure didn't run the company into it, so it isn't theirs to answer for
     const leftBeforeFailure = Boolean(wasInsolvent && a.resigned_on && failedOn && a.resigned_on < failedOn && months(a.resigned_on, failedOn) > LEFT_BEFORE_FAILURE_MONTHS);
+    const joinedAfterFailure = Boolean(wasInsolvent && a.appointed_on && failedOn && a.appointed_on > failedOn);
+    const notTheirs = leftBeforeFailure || joinedAfterFailure;
     const closed = insolvencyRecord || p.company_status === 'dissolved';
     const pNames = [p.company_name, ...(p.previous_company_names || []).map(x => x.name)];
     const sameName = names.some(n => pNames.some(m => similar(n, m)));
@@ -541,15 +579,15 @@ for (const o of people) {
     if ((p.sic_codes || []).some(s => (c.sic_codes || []).includes(s))) signals.push('same SIC code');
     if (failedOn && c.date_of_creation && months(failedOn, c.date_of_creation) <= PHOENIX_WINDOW_MONTHS) signals.push(`target incorporated within ${PHOENIX_WINDOW_MONTHS} months of its ${insolventFrom ? 'insolvency' : 'closure'}`);
     else if (!failedOn && wasInsolvent && ageMonths !== null && ageMonths <= PHOENIX_WINDOW_MONTHS) signals.push('target incorporated recently while this company is insolvent');
-    const phoenix = !wasInsolvent || leftBeforeFailure ? null : signals.includes('similar name') && signals.length >= 3 ? 'strong' : signals.length >= 2 ? 'possible' : null;
-    if (sameName || samePostcode) related.push({ name: p.company_name, number: p.company_number, status: p.company_status, incorporated: p.date_of_creation || null, ceased: p.date_of_cessation || null, closed: !!closed, insolvent: !!wasInsolvent, group_member: Boolean(closed && !wasInsolvent && await ownedByTarget(p.company_number)), url: `${SITE}/company/${p.company_number}` });
+    const phoenix = !wasInsolvent || notTheirs ? null : signals.includes('similar name') && signals.length >= 3 ? 'strong' : signals.length >= 2 ? 'possible' : null;
+    if (sameName || samePostcode) related.push({ name: p.company_name, number: p.company_number, status: p.company_status, incorporated: p.date_of_creation || null, ceased: p.date_of_cessation || null, closed: !!closed, insolvent: !!wasInsolvent, failure_not_theirs: notTheirs, solvent_liquidation: solventLiquidation, group_member: Boolean(closed && !wasInsolvent && await inTargetGroup(p.company_number)), url: `${SITE}/company/${p.company_number}` });
     if (!closed) continue; // active companies only count towards the cycling check below
     if (!wasInsolvent && signals.length < 2) continue; // plain dissolved company, nothing to report
     failed.push({ name: p.company_name, number: p.company_number, status: p.company_status, insolvent_from: insolventFrom, ceased: p.date_of_cessation || null,
-      director_resigned_on: a.resigned_on || null, director_left_before_failure: leftBeforeFailure, signals, phoenix, solvent_liquidation: solventLiquidation, url: `${SITE}/company/${p.company_number}` });
+      director_resigned_on: a.resigned_on || null, director_left_before_failure: leftBeforeFailure, director_joined_after_failure: joinedAfterFailure, signals, phoenix, solvent_liquidation: solventLiquidation, url: `${SITE}/company/${p.company_number}` });
     if (phoenix) flag(phoenix === 'strong' ? 'high' : 'medium', `phoenix_${phoenix}`, `${o.name}: ${phoenix} phoenix pattern with ${p.company_name} (${p.company_status}) - ${signals.join(', ')}`, `${SITE}/company/${p.company_number}`);
   }
-  const insolventOnly = failed.filter(f => f.signals.includes('insolvency') && !f.phoenix && !f.director_left_before_failure);
+  const insolventOnly = failed.filter(f => f.signals.includes('insolvency') && !f.phoenix && !f.director_left_before_failure && !f.director_joined_after_failure);
   if (insolventOnly.length) flag('medium', 'director_insolvencies', `${o.name}: director of ${insolventOnly.length} other compan${insolventOnly.length > 1 ? 'ies' : 'y'} with insolvency history (${insolventOnly.map(f => f.name).join(', ')})`, url);
   // serial pattern: a chain of related companies (similar name or same registered postcode) opened and closed one after another
   related.sort((x, y) => (x.incorporated || '').localeCompare(y.incorporated || ''));
@@ -558,8 +596,10 @@ for (const o of people) {
   const cycleKey = closedRelated.map(r => r.number).sort().join(',');
   if (closedRelated.length >= 2 && !cyclesSeen.has(cycleKey)) {
     cyclesSeen.add(cycleKey);
-    const span = r => `${(r.incorporated || '?').slice(0, 4)}-${r.ceased ? r.ceased.slice(0, 4) : r.closed ? 'insolvent' : 'active'}`;
-    flag(closedRelated.length >= 3 || closedRelated.some(r => r.insolvent) ? 'high' : 'medium', 'company_cycling', `${o.name}: ${closedRelated.length} closed companies in the last 10 years with a similar name or the same registered postcode - ${cycleCandidates.map(r => `${r.name} (${span(r)})`).join(', ')}${groupMembers ? ` (${groupMembers} closed subsidiar${groupMembers > 1 ? 'ies' : 'y'} of the target left out)` : ''}`, url);
+    const span = r => `${(r.incorporated || '?').slice(0, 4)}-${r.ceased ? r.ceased.slice(0, 4) : r.insolvent ? (r.failure_not_theirs ? 'insolvent outside this director\'s tenure' : 'insolvent') : r.solvent_liquidation ? 'solvent liquidation' : r.closed ? 'closed' : 'active'}`;
+    // a chain of solvent wind-ups is worth listing but never reaches high on its own
+    const notSolvent = closedRelated.filter(r => !r.solvent_liquidation);
+    flag(notSolvent.length >= 3 || closedRelated.some(r => r.insolvent && !r.failure_not_theirs) ? 'high' : 'medium', 'company_cycling', `${o.name}: ${closedRelated.length} closed companies in the last 10 years with a similar name or the same registered postcode${notSolvent.length < closedRelated.length ? `, ${closedRelated.length - notSolvent.length} of them in solvent liquidation` : ''} - ${cycleCandidates.map(r => `${r.name} (${span(r)})`).join(', ')}${groupMembers ? ` (${groupMembers} closed compan${groupMembers > 1 ? 'ies' : 'y'} in the target's own group left out)` : ''}`, url);
   }
   if (dissolved.length >= 5 && dissolved.length / others.length >= 0.5) flag('low', 'serial_dissolutions', `${o.name}: ${dissolved.length} of ${others.length} other appointments are dissolved companies`, url);
 
@@ -615,7 +655,7 @@ console.log(JSON.stringify({
     accounts: { last_made_up_to: c.accounts?.last_accounts?.made_up_to || null, type: c.accounts?.last_accounts?.type || null, next_due: c.accounts?.next_due || null, overdue: !!c.accounts?.overdue,
       history: accountsHistory, going_concern_doubt: goingConcernDoubt },
     confirmation_statement: { next_due: c.confirmation_statement?.next_due || null, overdue: !!c.confirmation_statement?.overdue },
-    outstanding_charges: outstandingCharges, insolvency_cases: (insolv?.cases || []).map(x => x.type),
+    outstanding_charges: outstandingCharges, charges: outstandingChargeItems, insolvency_cases: (insolv?.cases || []).map(x => x.type),
     gazette: { searched_names: gazette.searched_names, failed_searches: gazette.failed_searches, notices: gazette.notices },
     parents, gender_pay_gap: genderPayGap, sponsor_register: sponsorRegister,
     tribunal_decisions: { search_failed: tribunalSearchFailed, decisions: tribunals },

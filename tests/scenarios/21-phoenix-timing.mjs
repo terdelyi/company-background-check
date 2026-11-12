@@ -13,7 +13,7 @@ export default {
       'directors.0.failed_companies.length': 2,
       'directors.0.failed_companies.0': {
         name: 'EXAMPLE FOUNDRY LTD', number: 'ZZ100021', status: 'dissolved', insolvent_from: '2016-03-01', ceased: '2024-06-01',
-        director_resigned_on: null, director_left_before_failure: false, signals: ['insolvency'], phoenix: null, solvent_liquidation: false,
+        director_resigned_on: null, director_left_before_failure: false, director_joined_after_failure: false, signals: ['insolvency'], phoenix: null, solvent_liquidation: false,
         url: 'https://find-and-update.company-information.service.gov.uk/company/ZZ100021', tribunal_decisions: [],
       },
       'directors.0.failed_companies.1.insolvent_from': '2023-06-01',
