@@ -38,7 +38,7 @@ Run `scripts/ch-check.mjs` from this skill's folder as it is, and write its outp
 node <skill folder>/scripts/ch-check.mjs "<company number or name>" --aka "<brand, product or website names>" > ch.json
 ```
 
-Fill in `--aka` before the first run. Companies House only knows registered names, and many companies trade under a different one: a company registered as "{Name} Holdings Ltd" may sell a product called "{Brand}", or rebrand to initials without changing its registered name. The script searches The Gazette, tribunal decisions and the sponsor register under every name it is given, and matches directors' other companies against them, so a missing brand is a missed check. Open the company's website first (its home page, footer and about page) and pass every brand, trading name, product and website name you find. If later research turns up one you did not pass, run the script again with it added and use the new output. The report header lists only trading names, the names the company itself trades under, and only when one differs from the registered name. Products go to the script but not into the header.
+Fill in `--aka` before the first run. Companies House only knows registered names, and many companies trade under a different one: a company registered as "{Name} Holdings Ltd" may sell a product called "{Brand}", or rebrand to initials without changing its registered name. The script searches The Gazette, tribunal decisions, court judgments and the sponsor register under every name it is given, and matches directors' other companies against them, so a missing brand is a missed check. Open the company's website first (its home page, footer and about page) and pass every brand, trading name, product and website name you find. If later research turns up one you did not pass, run the script again with it added and use the new output. The report header lists only trading names, the names the company itself trades under, and only when one differs from the registered name. Products go to the script but not into the header.
 
 Exit codes: `0` JSON report on stdout, `2` no key or API unreachable (use path B), `3` ambiguous name (candidates on stdout, ask the user).
 
@@ -50,11 +50,15 @@ The JSON has `company`, `directors` (active directors plus individual owners who
 
 `company.parents` follows owners that are companies up to three levels, to the UK parent. Each parent gets the register and Gazette checks but not the director checks, and its findings come back as flags prefixed `parent_` with the same severity, because a parent's insolvency or winding-up reaches the subsidiary's staff too. Present each one as the parent's, never the employer's own: "Parent {name}: …". Owners recorded without a company number are found by an exact name search and marked `matched_by: "name"`: say so in "Not checked and limits". `meta.parents_not_followed` lists owners registered abroad, owners whose name matched no single company, and owners beyond three levels. Name them under "Not checked and limits", and for a foreign parent run one web search for insolvency or administration news under its name.
 
-Three employer registers come back as context:
+These public records come back as context:
 
 - `company.gender_pay_gap` lists the company's gender pay gap filings by company number, newest first. Employers with 250 or more staff must file, so the size band is the most reliable headcount you have; report it with the years filed in section 8. A late filing is worth a line, not a flag.
 - `company.sponsor_register` says whether the company is on the Home Office register of licensed visa sponsors, matched on its name. It lists current sponsors only, so "not found" means not licensed now, never that a licence was revoked. Report it in section 8 and never flag it.
 - `company.tribunal_decisions` lists employment tribunal decisions from the last six years that name the company as a respondent, raised together as one low flag. The list says nothing about who won. Open each decision from the last three years whose categories involve pay, wages or dismissal, and read the outcome. If one went against the company, raise the flag to medium, name the decision and link it. Report a claim the company won as context, not as a flag.
+- `company.court_judgments` lists judgments of the higher courts (High Court, Court of Appeal and others on Find Case Law) from the last six years whose title names the company as a party, raised together as one low flag. Most are commercial disputes, and like tribunal decisions the list says nothing about who won. Open each one, read what was decided, and describe it in a plain sentence ("a supplier sued for unpaid invoices and the court ordered the company to pay"). Raise the flag to medium when one is about unpaid wages, unpaid debts the company lost, or a winding-up petition, and name it. Report the rest as context. County court debt judgments are not on Find Case Law and are not checked.
+- `company.payment_practices` holds the company's payment practice reports, found by company number: `reports` (how many), `latest` and `previous`, each with the period, average days to pay, the share of invoices paid within 30 days, 31 to 60 days and after 60 days, the share not paid within agreed terms, and a link. Only larger companies have to report, so no reports is normal and not a finding. Put the latest report in the company record. More than 60 days on average, or under half of invoices paid within 30 days, makes Money a Caution, and say whether it got better or worse than the previous report. If `search_failed` is true, search check-payment-practices.service.gov.uk by hand and say so in "Not checked and limits".
+
+`company.ir35_size` estimates whether the company counts as small for IR35, which decides who sets a contractor's employment status: a small client leaves it to the contractor's own company, a medium or large one must decide it and give reasons. From 6 April 2026 a company is small when it meets two of these three: turnover of £15 million or less, a balance sheet total (fixed plus current assets) of £7.5 million or less, and 50 employees or fewer. `status` is `small` or `not small` when the latest accounts give two figures that agree, `probably small` when they do not but the company filed micro-entity, small or total-exemption accounts, and `unknown` otherwise. When the latest accounts are a PDF, read turnover, fixed and current assets and employees by hand and apply the same test. The figures are the company's own: when `part_of_group` is true it is small only if the whole group is, so read the parent's group accounts before calling it small. Report it in section 8 only when the reader is or may be a contractor, and point them to HMRC's off-payroll working guidance for their own case.
 
 ### Accounts rules
 
@@ -129,7 +133,6 @@ Run these searches (in parallel where possible), look back about five years, and
 | Redundancies | `<name> redundancies layoffs job cuts`, `<name> restructuring`, then `<name> job cuts <year>` for each of the last five years the first results do not cover | Every round in the last five years, newest first: date, what happened, how many or what share of staff. Add any year-on-year fall in average employees from the accounts history |
 | Media coverage | `<name> news`, `<name> <CEO or founder name>` | Up to 8 items: date, outlet, headline, tone |
 | Legal and financial trouble | `<name> administration insolvency winding up`, `<name> employment tribunal`, `<name> The Gazette notice`, `<name> lawsuit fine investigation` | Tribunal decisions, winding-up petitions, regulator action, unpaid wages or other money owed to staff |
-| Paying suppliers | Search the company on check-payment-practices.service.gov.uk (only larger companies report) | Average days to pay and share paid within 30 days in the latest report. More than 60 days on average, or under half paid on time, is a Caution under Money |
 | Unpaid pensions | Search the company's name on the Pensions Regulator's published penalty notices and court orders (https://www.thepensionsregulator.gov.uk/en/document-library/enforcement-activity/penalty-notices) and `<name> pensions regulator penalty` | A named entry that matches the company's name and town is a medium flag under Legal and insolvency notices, linked to the notice |
 | Minimum wage | `HMRC national minimum wage named employers <name>` and the latest gov.uk naming list | A named entry that matches the company's name and town is a medium flag under Legal and insolvency notices, linked to the list |
 | Employee reviews | `<name> Glassdoor reviews`, `<name> Indeed reviews` | Rating, review count, recurring themes |
@@ -204,6 +207,7 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 | Next accounts due | {date} {OVERDUE if so} |
 | Confirmation statement | {next due} {OVERDUE if so} |
 | Outstanding charges | {count, then the latest one's date and lender} |
+| Paying suppliers | {average days to pay and share paid within 30 days in the latest report, with its period. Leave the row out when the company does not report} |
 | Insolvency history | |
 | Source | [Companies House]({url}) |
 
@@ -252,6 +256,7 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 - **Hiring:** {open roles seen, or Not found}
 - **Size (gender pay gap):** {latest size band and the years filed, or "Not on the register (under 250 staff, or not filing)"}
 - **Visa sponsor:** {Licensed, with type and rating | Not on the current register}
+- **Size for IR35:** {Small | Not small | Probably small | Unknown}, with the figures it rests on and, for a group company, the group's size. Only when the reader is or may be a contractor
 
 ## 9. Verify next
 
@@ -287,7 +292,7 @@ The page opens with a scorecard so the reader gets the picture before the detail
 | Directors and owners | Directors, owners, phoenix and cycling patterns, disqualifications. Name a pattern in the line only when one was found |
 | Money | Accounts (net assets, cash, going concern), charges, funding, paying suppliers |
 | Redundancies | Layoffs, restructuring and a falling headcount in the accounts over the last five years. A single round more than a year ago is listed but stays Clear |
-| Legal and insolvency notices | Gazette notices, tribunal decisions, minimum wage naming, regulator action |
+| Legal and insolvency notices | Gazette notices, tribunal decisions, court judgments, minimum wage naming, regulator action |
 | Media coverage | Tone of press coverage |
 | Employee reviews | Glassdoor, Indeed and similar |
 | Coverage of this check | How complete this check was |

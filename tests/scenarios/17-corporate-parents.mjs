@@ -13,6 +13,7 @@ export default {
     flags: ['high parent_accounts_overdue', 'high parent_status', 'high parent_insolvency', 'high parent_winding_up_petition'],
     fields: {
       'flags.0.record': 'parent',
+      'company.ir35_size.part_of_group': true,
       'flags.0.text': 'Parent PLACEHOLDER MIDCO LTD: Accounts overdue (were due 2026-01-31)',
       'company.parents.length': 3,
       'company.parents.0': {

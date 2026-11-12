@@ -17,6 +17,10 @@ const GPG_BASE = process.env.GPG_BASE || 'https://gender-pay-gap.service.gov.uk'
 const GOVUK_BASE = process.env.GOVUK_BASE || 'https://www.gov.uk', GOVUK_SITE = 'https://www.gov.uk';
 const SPONSOR_REGISTER_PAGE = '/government/publications/register-of-licensed-sponsors-workers', TRIBUNAL_LOOKBACK_MONTHS = 72, MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES = 10;
 const MAX_PARENT_LEVELS = 3;
+const PPR_BASE = process.env.PPR_BASE || 'https://check-payment-practices.service.gov.uk', PPR_SITE = 'https://check-payment-practices.service.gov.uk';
+const CASELAW_BASE = process.env.CASELAW_BASE || 'https://caselaw.nationalarchives.gov.uk', COURT_LOOKBACK_MONTHS = 72;
+// off-payroll (IR35) small company limits from 6 April 2026: a company is small when it meets two of the three
+const IR35_SMALL = { turnover: 15_000_000, balance_sheet_total: 7_500_000, employees: 50 };
 const USER_AGENT = 'company-background-check/1.0.0 (+https://github.com/terdelyi/company-background-check)';
 // tests set this to 0 so the pauses between public requests don't slow them down
 const PUBLIC_DELAY_MS = Number(process.env.PUBLIC_DELAY_MS ?? 1000);
@@ -30,6 +34,8 @@ const ACCOUNT_CONCEPTS = {
   net_current_assets: ['NetCurrentAssetsLiabilities'],
   profit: ['ProfitLoss', 'ProfitLossOnOrdinaryActivitiesAfterTax'],
   staff_costs: ['StaffCostsEmployeeBenefitsExpense', 'StaffCosts', 'WagesSalaries'],
+  fixed_assets: ['FixedAssets'],
+  current_assets: ['CurrentAssets'],
 };
 const INSOLVENT = ['liquidation', 'administration', 'receivership', 'insolvency-proceedings', 'voluntary-arrangement'];
 const STOP = new Set(['ltd', 'limited', 'plc', 'llp', 'the', 'and', 'company', 'group', 'holdings', 'services', 'solutions', 'international', 'global',
@@ -138,6 +144,38 @@ async function getGazette(path) {
   if (wait > 0) await sleep(wait);
   lastGazetteRequest = Date.now();
   return getPublic(GAZETTE_BASE + path);
+}
+
+// Larger companies report how fast they pay suppliers. The export has no search, so read it line by line
+// and keep only this company's rows. Each row's first line holds every figure used here.
+async function paymentPractices(num) {
+  requests++;
+  try {
+    const res = await fetch(`${PPR_BASE}/export/csv/`, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(180000) });
+    if (!res.ok || !res.body) return null;
+    const decoder = new TextDecoder(), rows = [];
+    let header = null, rest = '';
+    const take = line => {
+      if (header === null) { header = line; return; }
+      if (!line.includes(`,${num},`)) return;
+      const [row] = parseCsv(`${header}\n${line}`);
+      if (row && companyNumberKey(row['Company number']) === num) rows.push(row);
+    };
+    for await (const chunk of res.body) {
+      const lines = (rest + decoder.decode(chunk, { stream: true })).split('\n');
+      rest = lines.pop();
+      lines.forEach(take);
+    }
+    if (rest) take(rest);
+    const pct = v => v === undefined || v === '' ? null : Number(v);
+    const reports = rows.map(r => ({
+      period_start: r['Start date'] || null, period_end: r['End date'] || null, filed: r['Filing date'] || null,
+      average_days_to_pay: pct(r['Average time to pay']), paid_within_30_days_pct: pct(r['% Invoices paid within 30 days']),
+      paid_31_to_60_days_pct: pct(r['% Invoices paid between 31 and 60 days']), paid_after_60_days_pct: pct(r['% Invoices paid later than 60 days']),
+      not_paid_within_terms_pct: pct(r['% Invoices not paid within agreed terms']), url: `${PPR_SITE}/report/${r['Report Id']}/`,
+    })).sort((a, b) => (b.period_end || '').localeCompare(a.period_end || ''));
+    return { reports: reports.length, latest: reports[0] || null, previous: reports[1] || null };
+  } catch { return null; }
 }
 
 // A members' voluntary liquidation comes with a declaration of solvency: groups use it to close
@@ -298,6 +336,8 @@ const [off, psc, insolv, charges, filings] = await Promise.all([
   get(`/company/${number}/filing-history?items_per_page=100`),
 ]);
 
+// The full export is about 100MB, so it streams in the background while the other checks run
+const paymentPracticesPending = paymentPractices(number);
 const flags = [];
 const flag = (severity, code, text, url = `${SITE}/company/${number}`) => flags.push({ severity, code, text, url });
 const names = [c.company_name, ...(c.previous_company_names || []).map(p => p.name), ...aka];
@@ -354,6 +394,19 @@ if (previousYear?.net_assets > 0 && latestYear.net_assets !== null && latestYear
 if (latestYear?.employees >= 10 && (latestYear.net_assets < 0 || latestYear.net_current_assets < 0)) {
   flag('low', 'employer_without_assets', `Employs ${latestYear.employees} people but its ${latestYear.net_assets < 0 ? 'debts exceed everything it owns' : 'short-term debts exceed its short-term assets'} at ${latestYear.year_end}: check which company owns the brand, contracts and other assets`, filingsUrl);
 }
+// Who decides a contractor's IR35 status depends on whether the client is small. Two of the three limits decide it,
+// and a company in a medium or large group is not small whatever its own size.
+const ir35Size = (() => {
+  const y = latestYear || {};
+  const balanceSheetTotal = y.fixed_assets !== null && y.fixed_assets !== undefined && y.current_assets !== null && y.current_assets !== undefined ? y.fixed_assets + y.current_assets : null;
+  const figures = { turnover: y.turnover ?? null, balance_sheet_total: balanceSheetTotal, employees: y.employees ?? null };
+  const known = Object.entries(figures).filter(([, v]) => v !== null);
+  const within = known.filter(([k, v]) => v <= IR35_SMALL[k]).length, over = known.length - within;
+  const smallAccounts = /micro|small|total-exemption/.test(c.accounts?.last_accounts?.type || '');
+  const status = within >= 2 ? 'small' : over >= 2 ? 'not small' : smallAccounts ? 'probably small' : 'unknown';
+  const basis = within >= 2 || over >= 2 ? 'figures in the latest accounts' : smallAccounts ? `filed ${c.accounts.last_accounts.type} accounts` : y.format && y.format !== 'ixbrl' ? 'latest accounts are not iXBRL, read the figures by hand' : 'not enough figures in the latest accounts';
+  return { status, basis, year_end: y.year_end || null, figures, limits: IR35_SMALL };
+})();
 // Measured from the peak so cuts spread over several years still show
 const headcountPeak = accountsHistory.slice(1).reduce((peak, year) => (year.employees ?? -1) > (peak?.employees ?? -1) ? year : peak, null);
 if (headcountPeak?.employees >= MIN_HEADCOUNT_FOR_TREND && latestYear.employees !== null && latestYear.employees < headcountPeak.employees * 0.75) {
@@ -430,6 +483,34 @@ if (sponsorCsv !== null) {
   sponsorRegister.listed = sponsorRegister.matches.length > 0;
 }
 
+// Court judgment titles read "First party v Second party", or "Re Company (in liquidation)" for insolvency hearings
+function namesParty(title, keys) {
+  const vSides = (title || '').replace(/^re:?\s+/i, '').replace(/\((in )?(creditors' voluntary |compulsory )?(liquidation|administration|receivership)\)/gi, ' ').split(/\s+v\.?\s+/i);
+  // a name can itself contain "and", so test each side whole as well as split into its parties
+  const sides = [...vSides, ...vSides.flatMap(s => s.split(/,|\s+and\s+|\s*&\s*|\(\d+\)/i))];
+  const compact = s => orgKey(s).replace(/ /g, '');
+  const wanted = new Set([...keys].map(k => k.replace(/ /g, '')));
+  return sides.some(p => wanted.has(compact(p)));
+}
+const decodeXml = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&');
+// High Court, appeal and Employment Appeal Tribunal judgments from Find Case Law. The search matches any
+// judgment that mentions the name, so only those naming the company as a party are kept.
+async function searchJudgments(searchNames, keys) {
+  const found = new Map(), failed = [];
+  for (const name of searchNames) {
+    const xml = await getPublic(`${CASELAW_BASE}/atom.xml?query=${encodeURIComponent(`"${name}"`)}`, 'application/atom+xml');
+    if (xml === null) { failed.push(name); continue; }
+    for (const entry of xml.split('<entry>').slice(1)) {
+      const title = decodeXml(entry.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '');
+      const url = entry.match(/<link href="([^"]+)" rel="alternate"\/>/)?.[1];
+      const date = entry.match(/<published>(\d{4}-\d{2}-\d{2})/)?.[1];
+      if (!url || !date || found.has(url) || monthsAgo(date) > COURT_LOOKBACK_MONTHS || !namesParty(title, keys)) continue;
+      found.set(url, { title, date, court: decodeXml(entry.match(/<author><name>([\s\S]*?)<\/name>/)?.[1] || ''), citation: entry.match(/type="ukncn">([^<]+)</)?.[1] || null, url });
+    }
+  }
+  return { judgments: [...found.values()].sort((a, b) => b.date.localeCompare(a.date)), failed };
+}
+
 // Tribunal titles read "Claimant v Respondent(s): case number"; respondents may be numbered "(1) X (2) Y"
 // Respondents carry a status, "(in Liquidation)", and may space a name differently from the register: "My Health Box" for "MYHEALTHBOX"
 function namesRespondent(title, keys) {
@@ -458,6 +539,11 @@ const targetTribunals = await searchTribunals(gazetteNames, nameKeys, TRIBUNAL_L
 const tribunals = targetTribunals.decisions, tribunalSearchFailed = targetTribunals.failed.length > 0;
 if (tribunals.length) {
   flag('low', 'tribunal_decisions', `${tribunals.length} employment tribunal decision${tribunals.length > 1 ? 's' : ''} since ${tribunals.at(-1).decision_date} name the company as respondent; read them for the outcome`, tribunals[0].url);
+}
+const courtSearch = await searchJudgments(gazetteNames, nameKeys);
+const judgments = courtSearch.judgments;
+if (judgments.length) {
+  flag('low', 'court_judgments', `${judgments.length} court judgment${judgments.length > 1 ? 's' : ''} since ${judgments.at(-1).date} name the company as a party, read them for what was decided`, judgments[0].url);
 }
 
 // --- officers
@@ -651,6 +737,7 @@ flags.sort((a, b) => order[a.severity] - order[b.severity]);
 // whose record each flag comes from, so a reader can tell the employer's own findings from a parent's or a director's other companies
 const DIRECTOR_RECORD = /^(phoenix_|company_cycling$|director_insolvencies$|serial_dissolutions$|failed_company_tribunals$|disqualification$)/;
 for (const f of flags) f.record = f.code.startsWith('parent_') ? 'parent' : DIRECTOR_RECORD.test(f.code) ? 'director' : 'own';
+const paymentPracticeReports = await paymentPracticesPending;
 console.log(JSON.stringify({
   checked_at: new Date().toISOString().slice(0, 10),
   company: {
@@ -664,6 +751,9 @@ console.log(JSON.stringify({
     gazette: { searched_names: gazette.searched_names, failed_searches: gazette.failed_searches, notices: gazette.notices },
     parents, gender_pay_gap: genderPayGap, sponsor_register: sponsorRegister,
     tribunal_decisions: { search_failed: tribunalSearchFailed, decisions: tribunals },
+    court_judgments: { search_failed: courtSearch.failed.length > 0, judgments },
+    payment_practices: paymentPracticeReports === null ? { search_failed: true } : { search_failed: false, ...paymentPracticeReports },
+    ir35_size: { ...ir35Size, part_of_group: parents.length > 0 },
     active_directors: activeDirs.length, resigned_last_12_months: recentResignations.length, url: `${SITE}/company/${number}`,
   },
   directors, pscs, flags,
@@ -671,5 +761,6 @@ console.log(JSON.stringify({
     caveats: ['Companies House often holds several officer records for one person, so appointment histories can be incomplete.', 'Name-based matches (similar names, disqualification hits) are leads to verify, not findings.',
       'Accounts figures are read from iXBRL tags only; a year marked "pdf" or "unavailable" has to be read by hand.',
       `Gazette notices from the last ${GAZETTE_LOOKBACK_MONTHS / 12} years are flagged only when they carry the company number; gazette_name_only lists the rest to check by hand.`,
-      'The sponsor register and tribunal decisions are matched on name only. The sponsor register lists current sponsors only, so a revoked licence does not show.'] },
+      'The sponsor register, tribunal decisions and court judgments are matched on name only. The sponsor register lists current sponsors only, so a revoked licence does not show.',
+      'ir35_size uses the company\'s own figures. A company in a group is small only if the whole group is.'] },
 }, null, 2));

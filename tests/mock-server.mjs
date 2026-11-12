@@ -6,10 +6,12 @@ import { readdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 // Paging params are ignored so fixtures stay short; these are the ones that change the answer.
-const KEY_PARAMS = ['q', 'category', 'text'];
-// The real Gazette and gov.uk search answer a search with no hits with 200 and no entries, not 404.
+const KEY_PARAMS = ['q', 'category', 'text', 'query'];
+// The real Gazette, gov.uk and Find Case Law searches answer a search with no hits with 200 and no entries, not 404.
 const GAZETTE_NO_HITS = { 'f:total': '0' };
 const GOVUK_NO_HITS = { results: [], total: 0 };
+const CASELAW_NO_HITS = '<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>';
+export const PAYMENT_PRACTICES_HEADER = 'Report Id,Start date,End date,Filing date,Company,Company number,Average time to pay,% Invoices paid within 30 days,% Invoices paid between 31 and 60 days,% Invoices paid later than 60 days,% Invoices not paid within agreed terms';
 // Scenario dates are written relative to this day, so every run sees the same ages and deadlines.
 export const SCENARIO_NOW = '2026-06-01T12:00:00Z';
 
@@ -46,6 +48,12 @@ export function answer(routes, url, hasAuth) {
   if (!routes.has(key) && key.startsWith('/api/search.json')) {
     return { status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify(GOVUK_NO_HITS) };
   }
+  if (!routes.has(key) && key.startsWith('/atom.xml')) {
+    return { status: 200, headers: { 'content-type': 'application/atom+xml' }, body: CASELAW_NO_HITS };
+  }
+  if (!routes.has(key) && key === '/export/csv/') {
+    return { status: 200, headers: { 'content-type': 'text/csv' }, body: `${PAYMENT_PRACTICES_HEADER}\n` };
+  }
   if (!routes.has(key)) {
     return { status: 404, headers: {}, body: '', miss: key };
   }
@@ -55,6 +63,9 @@ export function answer(routes, url, hasAuth) {
   }
   if (route.csv !== undefined) {
     return { status: 200, headers: { 'content-type': 'text/csv' }, body: route.csv };
+  }
+  if (route.xml !== undefined) {
+    return { status: 200, headers: { 'content-type': 'application/atom+xml' }, body: route.xml };
   }
   if (route.storage !== undefined) {
     // like the signed storage URLs the Document API redirects to, which refuse a second auth header

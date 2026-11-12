@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { SCENARIO_NOW as FAKE_NOW, loadScenarios, mergeRoutes, startMock } from './mock-server.mjs';
 
 const EVIDENCE_SITES = ['https://find-and-update.company-information.service.gov.uk/', 'https://www.thegazette.co.uk/notice/',
-  'https://www.gov.uk/employment-tribunal-decisions/',
+  'https://www.gov.uk/employment-tribunal-decisions/', 'https://caselaw.nationalarchives.gov.uk/',
 ];
 const script = fileURLToPath(new URL('../skills/company-background-check/scripts/ch-check.mjs', import.meta.url));
 const freezeTime = new URL('./freeze-time.mjs', import.meta.url).href;
@@ -88,7 +88,7 @@ function report(label, scenario, problems) {
 
 for (const scenario of scenarios) {
   misses.clear();
-  const env = { COMPANIES_HOUSE_API_KEY: 'test-key', CH_API_BASE: scenario.base || base, CH_DOC_API_BASE: base, GAZETTE_BASE: base, GPG_BASE: base, GOVUK_BASE: base, CH_RETRY_MS: '0', PUBLIC_DELAY_MS: '0', FAKE_NOW, ...scenario.env };
+  const env = { COMPANIES_HOUSE_API_KEY: 'test-key', CH_API_BASE: scenario.base || base, CH_DOC_API_BASE: base, GAZETTE_BASE: base, GPG_BASE: base, GOVUK_BASE: base, PPR_BASE: base, CASELAW_BASE: base, CH_RETRY_MS: '0', PUBLIC_DELAY_MS: '0', FAKE_NOW, ...scenario.env };
   report(scenario.name, scenario, check(scenario, await runScript(scenario.args, env)));
 }
 
