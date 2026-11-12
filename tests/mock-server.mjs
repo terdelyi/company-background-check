@@ -39,6 +39,8 @@ export function mergeRoutes(scenarios) {
   return routes;
 }
 
+const failedCalls = new Map();
+
 /** @returns {{ status: number, headers: Record<string, string>, body: string, miss?: string }} */
 export function answer(routes, url, hasAuth) {
   const key = routeKey(url);
@@ -57,7 +59,16 @@ export function answer(routes, url, hasAuth) {
   if (!routes.has(key)) {
     return { status: 404, headers: {}, body: '', miss: key };
   }
-  const route = routes.get(key);
+  let route = routes.get(key);
+  if (route.failFirst !== undefined) {
+    // { failFirst: n, then: route } answers 503 n times, like a service having a bad moment
+    const calls = (failedCalls.get(key) || 0) + 1;
+    failedCalls.set(key, calls);
+    if (calls <= route.failFirst) {
+      return { status: 503, headers: {}, body: '' };
+    }
+    route = route.then;
+  }
   if (route.redirect) {
     return { status: 302, headers: { location: route.redirect }, body: '' };
   }

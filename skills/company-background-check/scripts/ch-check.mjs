@@ -60,15 +60,21 @@ async function get(path, attempt = 0) {
 }
 
 // Document API failures only cost the accounts figures, so they return null instead of ending the run.
+// It shares the API's rate limit and fails now and then, so a 429, 5xx or network error is retried.
 async function getDocument(url, accept) {
-  requests++;
-  try {
-    let res = await fetch(url, { headers: { ...auth(), Accept: accept }, redirect: 'manual' });
-    // content redirects to a signed storage URL that rejects a second auth header
-    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) res = await fetch(new URL(res.headers.get('location'), url), { headers: { Accept: accept } });
-    if (!res.ok) return null;
-    return accept === 'application/json' ? await res.json() : await res.text();
-  } catch { return null; }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    requests++;
+    try {
+      let res = await fetch(url, { headers: { ...auth(), Accept: accept }, redirect: 'manual' });
+      // content redirects to a signed storage URL that rejects a second auth header
+      if (res.status >= 300 && res.status < 400 && res.headers.get('location')) res = await fetch(new URL(res.headers.get('location'), url), { headers: { Accept: accept } });
+      if (res.ok) return accept === 'application/json' ? await res.json() : await res.text();
+      if (res.status === 429) { await sleep(Number(process.env.CH_RETRY_MS || 60000)); continue; }
+      if (res.status < 500) return null;
+    } catch { /* retry */ }
+    await sleep(PUBLIC_DELAY_MS * 2 ** attempt);
+  }
+  return null;
 }
 
 async function accountsDocument(metadataUrl) {
@@ -216,6 +222,31 @@ const uniqueSearchNames = coNames => {
   const seen = new Set();
   return coNames.map(searchName).filter(n => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
 };
+
+// Registered names often run words together ("MYHEALTHBOX") where tribunal decisions and judgments space them
+// ("My Health Box"), and a phrase search finds only the spelling it is given.
+const NAME_WORDS = new Set(('my our your the and of in on for to at by health care box group software cloud tech technology digital data '
+  + 'solutions services service systems consulting management media global uk international home homes build building construction '
+  + 'electrical electric cable cables energy power green smart life living medical clinic dental pharmacy food kitchen kitchens fashion '
+  + 'design studio property estates invest investments capital finance pay payroll hr people work works staff recruitment talent '
+  + 'learning training education academy logistics transport travel trade trading retail shop store direct online web net hub lab labs '
+  + 'partners holdings ventures world city london first one prime pro plus best top new blue red gold silver star sun well fit sport '
+  + 'security safe link connect network mobile app print marketing agency events').split(' '));
+function spacedName(name, vocab, mostWords) {
+  const s = searchName(name).toLowerCase();
+  if (/\s/.test(s) || s.length < 6) return null;
+  const better = (candidate, current) => !current || (mostWords ? candidate > current : candidate < current);
+  const best = [[]];
+  for (let i = 1; i <= s.length; i++) {
+    for (let j = 0; j < i; j++) {
+      const word = s.slice(j, i);
+      if (best[j] && word.length >= 2 && vocab.has(word) && better(best[j].length + 1, best[i]?.length)) best[i] = [...best[j], word];
+    }
+  }
+  return best[s.length]?.length >= 2 ? best[s.length].join(' ') : null;
+}
+// Both the fewest and the most words: a brand word in the vocabulary can swallow a split ("my healthbox" for "my health box")
+const withSpacedNames = (coNames, vocab) => uniqueSearchNames([...coNames, ...[false, true].flatMap(most => coNames.map(n => spacedName(n, vocab, most))).filter(Boolean)]);
 
 async function gazetteCheck(coNames, num) {
   const searched = uniqueSearchNames(coNames);
@@ -458,6 +489,7 @@ while (parentQueue.length) {
 
 // --- employer registers. Gender pay gap and sponsor licence are context for the report, never flags.
 const nameKeys = new Set(names.map(orgKey).filter(Boolean));
+const nameVocab = new Set([...NAME_WORDS, ...[...nameKeys].flatMap(k => k.split(' '))]);
 const gpgYears = Array.from({ length: GPG_YEARS }, (_, i) => new Date().getFullYear() - i);
 const sponsorPage = parseJson(await getPublic(`${GOVUK_BASE}/api/content${SPONSOR_REGISTER_PAGE}`));
 const sponsorCsvUrl = (sponsorPage?.details?.attachments || []).find(a => a.content_type === 'text/csv')?.url;
@@ -535,12 +567,12 @@ async function searchTribunals(searchNames, keys, lookbackMonths = Infinity) {
   }
   return { decisions: [...decisions.values()].sort((a, b) => b.decision_date.localeCompare(a.decision_date)), failed };
 }
-const targetTribunals = await searchTribunals(gazetteNames, nameKeys, TRIBUNAL_LOOKBACK_MONTHS);
+const targetTribunals = await searchTribunals(withSpacedNames(gazetteNames, nameVocab), nameKeys, TRIBUNAL_LOOKBACK_MONTHS);
 const tribunals = targetTribunals.decisions, tribunalSearchFailed = targetTribunals.failed.length > 0;
 if (tribunals.length) {
   flag('low', 'tribunal_decisions', `${tribunals.length} employment tribunal decision${tribunals.length > 1 ? 's' : ''} since ${tribunals.at(-1).decision_date} name the company as respondent; read them for the outcome`, tribunals[0].url);
 }
-const courtSearch = await searchJudgments(gazetteNames, nameKeys);
+const courtSearch = await searchJudgments(withSpacedNames(gazetteNames, nameVocab), nameKeys);
 const judgments = courtSearch.judgments;
 if (judgments.length) {
   flag('low', 'court_judgments', `${judgments.length} court judgment${judgments.length > 1 ? 's' : ''} since ${judgments.at(-1).date} name the company as a party, read them for what was decided`, judgments[0].url);
@@ -687,7 +719,8 @@ for (const o of people) {
     const span = r => `${(r.incorporated || '?').slice(0, 4)}-${r.ceased ? r.ceased.slice(0, 4) : r.insolvent ? (r.failure_not_theirs ? 'insolvent outside this director\'s tenure' : 'insolvent') : r.solvent_liquidation ? 'solvent liquidation' : r.closed ? 'closed' : 'active'}`;
     // a chain of solvent wind-ups is worth listing but never reaches high on its own
     const notSolvent = closedRelated.filter(r => !r.solvent_liquidation);
-    flag(notSolvent.length >= 3 || closedRelated.some(r => r.insolvent && !r.failure_not_theirs) ? 'high' : 'medium', 'company_cycling', `${o.name}: ${closedRelated.length} closed companies in the last 10 years with a similar name or the same registered postcode${notSolvent.length < closedRelated.length ? `, ${closedRelated.length - notSolvent.length} of them in solvent liquidation` : ''} - ${cycleCandidates.map(r => `${r.name} (${span(r)})`).join(', ')}${groupMembers ? ` (${groupMembers} closed compan${groupMembers > 1 ? 'ies' : 'y'} in the target's own group left out)` : ''}`, url);
+    const activeRelated = cycleCandidates.filter(r => !r.closed);
+    flag(notSolvent.length >= 3 || closedRelated.some(r => r.insolvent && !r.failure_not_theirs) ? 'high' : 'medium', 'company_cycling', `${o.name}: ${closedRelated.length} closed companies in the last 10 years with a similar name or the same registered postcode${notSolvent.length < closedRelated.length ? `, ${closedRelated.length - notSolvent.length} of them in solvent liquidation` : ''} - ${closedRelated.map(r => `${r.name} (${span(r)})`).join(', ')}${activeRelated.length ? `. Still active with a similar name or the same postcode: ${activeRelated.map(r => `${r.name} (from ${(r.incorporated || '?').slice(0, 4)})`).join(', ')}` : ''}${groupMembers ? ` (${groupMembers} closed compan${groupMembers > 1 ? 'ies' : 'y'} in the target's own group left out)` : ''}`, url);
   }
   if (dissolved.length >= 5 && dissolved.length / others.length >= 0.5) flag('low', 'serial_dissolutions', `${o.name}: ${dissolved.length} of ${others.length} other appointments are dissolved companies`, url);
 
@@ -720,7 +753,7 @@ const failedToSearch = [...linkedFailures.values()].sort((a, b) => phoenixRank(a
 const failedCompanyTribunals = { searched: [], failed_searches: [], not_searched: failedToSearch.slice(MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES).map(l => l.name) };
 for (const linked of failedToSearch.slice(0, MAX_FAILED_COMPANY_TRIBUNAL_SEARCHES)) {
   const coNames = [linked.name, ...((await profile(linked.number))?.previous_company_names || []).map(x => x.name)];
-  const { decisions, failed } = await searchTribunals(uniqueSearchNames(coNames), new Set(coNames.map(orgKey)));
+  const { decisions, failed } = await searchTribunals(withSpacedNames(coNames, nameVocab), new Set(coNames.map(orgKey)));
   if (failed.length) { failedCompanyTribunals.failed_searches.push(linked.name); continue; }
   failedCompanyTribunals.searched.push(linked.number);
   for (const f of linked.entries) f.tribunal_decisions = decisions;
