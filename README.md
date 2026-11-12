@@ -6,6 +6,13 @@
 
 An agent skill that runs a background check on a UK company from the point of view of someone who works there, or is thinking about it. Give it a company name or number and it produces a printable HTML report with a risk rating and scorecard at the top and the evidence underneath. It works with Claude Code, Codex, Cursor and other agents that support skills.
 
+<p>
+  <img src=".github/sample-high.png" width="49%" alt="Sample report rated High: a made-up company in administration, with a possible phoenix pattern on its director's other company">
+  <img src=".github/sample-low.png" width="49%" alt="Sample report rated Low: a made-up company with growing net assets and nothing adverse on the record">
+</p>
+
+The top of two sample reports. Both companies are made up.
+
 ## What it checks
 
 - **Companies House:** status, filings, charges, insolvency history, directors and owners
