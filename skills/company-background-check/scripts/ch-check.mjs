@@ -47,34 +47,56 @@ const fail = (code, msg) => { console.error(msg); process.exit(code); };
 
 const auth = () => ({ Authorization: 'Basic ' + Buffer.from(KEY + ':').toString('base64') });
 
-async function get(path, attempt = 0) {
-  requests++;
+const RATE_LIMIT_WAIT_MS = Number(process.env.CH_RETRY_MS || 60000);
+// Waits for the Companies House rate limit are shared by the whole run, so a struggling API costs minutes, not an hour
+let rateLimitWaitsLeft = Number(process.env.CH_MAX_RATE_LIMIT_WAITS ?? 5);
+
+// One retry policy for every request: a 5xx or dropped connection backs off briefly, a Companies House 429 waits
+// out its rate limit while the run's allowance lasts, and nothing waits after the last attempt.
+async function withRetries(attempts, send, { companiesHouse = false } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    const last = attempt === attempts - 1;
+    requests++;
+    let res;
+    try {
+      res = await send();
+    } catch (e) {
+      if (last) throw e;
+      await sleep(PUBLIC_DELAY_MS * 2 ** (attempt + 1));
+      continue;
+    }
+    if (res.ok || last || (res.status !== 429 && res.status < 500)) return res;
+    if (res.status === 429 && companiesHouse) {
+      if (rateLimitWaitsLeft <= 0) return res;
+      rateLimitWaitsLeft--;
+      await sleep(RATE_LIMIT_WAIT_MS);
+    } else {
+      await sleep(PUBLIC_DELAY_MS * 2 ** (attempt + 1));
+    }
+  }
+}
+
+async function get(path) {
   let res;
   try {
-    res = await fetch(BASE + path, { headers: auth() });
+    res = await withRetries(4, () => fetch(BASE + path, { headers: auth() }), { companiesHouse: true });
   } catch (e) { fail(2, `API unreachable: ${e.cause?.code || e.message}`); }
   if (res.status === 404) return null;
-  if (res.status === 429 && attempt < 5) { await sleep(Number(process.env.CH_RETRY_MS || 60000)); return get(path, attempt + 1); }
   if (!res.ok) fail(2, `API error ${res.status} on ${path}`);
   return res.json();
 }
 
 // Document API failures only cost the accounts figures, so they return null instead of ending the run.
-// It shares the API's rate limit and fails now and then, so a 429, 5xx or network error is retried.
 async function getDocument(url, accept) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    requests++;
-    try {
-      let res = await fetch(url, { headers: { ...auth(), Accept: accept }, redirect: 'manual' });
-      // content redirects to a signed storage URL that rejects a second auth header
-      if (res.status >= 300 && res.status < 400 && res.headers.get('location')) res = await fetch(new URL(res.headers.get('location'), url), { headers: { Accept: accept } });
-      if (res.ok) return accept === 'application/json' ? await res.json() : await res.text();
-      if (res.status === 429) { await sleep(Number(process.env.CH_RETRY_MS || 60000)); continue; }
-      if (res.status < 500) return null;
-    } catch { /* retry */ }
-    await sleep(PUBLIC_DELAY_MS * 2 ** attempt);
-  }
-  return null;
+  try {
+    let res = await withRetries(3, () => fetch(url, { headers: { ...auth(), Accept: accept }, redirect: 'manual' }), { companiesHouse: true });
+    // content redirects to a signed storage URL that rejects a second auth header
+    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+      res = await withRetries(3, () => fetch(new URL(res.headers.get('location'), url), { headers: { Accept: accept } }));
+    }
+    if (!res.ok) return null;
+    return accept === 'application/json' ? await res.json() : await res.text();
+  } catch { return null; }
 }
 
 async function accountsDocument(metadataUrl) {
@@ -132,16 +154,10 @@ const money = n => `${n < 0 ? '-' : ''}£${Math.abs(n).toLocaleString('en-GB')}`
 // The Gazette and gov.uk registers are separate services: a failure only loses that check, never the run.
 // Dropped connections are common on these services and a retry usually succeeds.
 async function getPublic(url, accept = 'application/json') {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) await sleep(PUBLIC_DELAY_MS * 2 ** attempt);
-    requests++;
-    try {
-      const res = await fetch(url, { headers: { Accept: accept, 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(20000) });
-      if (res.ok) return await res.text();
-      if (res.status !== 429 && res.status < 500) return null;
-    } catch { /* retry */ }
-  }
-  return null;
+  try {
+    const res = await withRetries(3, () => fetch(url, { headers: { Accept: accept, 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(20000) }));
+    return res.ok ? await res.text() : null;
+  } catch { return null; }
 }
 // The Gazette's fair use policy allows 5 requests per 10 seconds.
 let lastGazetteRequest = 0;
@@ -232,18 +248,23 @@ const NAME_WORDS = new Set(('my our your the and of in on for to at by health ca
   + 'learning training education academy logistics transport travel trade trading retail shop store direct online web net hub lab labs '
   + 'partners holdings ventures world city london first one prime pro plus best top new blue red gold silver star sun well fit sport '
   + 'security safe link connect network mobile app print marketing agency events').split(' '));
-function spacedName(name, vocab, mostWords) {
-  const s = searchName(name).toLowerCase();
-  if (/\s/.test(s) || s.length < 6) return null;
+function splitWord(word, vocab, mostWords) {
+  if (word.length < 6) return word;
   const better = (candidate, current) => !current || (mostWords ? candidate > current : candidate < current);
   const best = [[]];
-  for (let i = 1; i <= s.length; i++) {
+  for (let i = 1; i <= word.length; i++) {
     for (let j = 0; j < i; j++) {
-      const word = s.slice(j, i);
-      if (best[j] && word.length >= 2 && vocab.has(word) && better(best[j].length + 1, best[i]?.length)) best[i] = [...best[j], word];
+      const part = word.slice(j, i);
+      if (best[j] && part.length >= 2 && vocab.has(part) && better(best[j].length + 1, best[i]?.length)) best[i] = [...best[j], part];
     }
   }
-  return best[s.length]?.length >= 2 ? best[s.length].join(' ') : null;
+  return best[word.length]?.length >= 2 ? best[word.length].join(' ') : word;
+}
+// Each word is split on its own, so a name that runs only some words together ("placeholder teapotbox") is caught too
+function spacedName(name, vocab, mostWords) {
+  const s = searchName(name).toLowerCase();
+  const spaced = s.split(/\s+/).map(word => splitWord(word, vocab, mostWords)).join(' ');
+  return spaced !== s ? spaced : null;
 }
 // Both the fewest and the most words: a brand word in the vocabulary can swallow a split ("my healthbox" for "my health box")
 const withSpacedNames = (coNames, vocab) => uniqueSearchNames([...coNames, ...[false, true].flatMap(most => coNames.map(n => spacedName(n, vocab, most))).filter(Boolean)]);
