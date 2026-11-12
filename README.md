@@ -17,14 +17,14 @@ An agent skill that runs a background check on a UK company from the point of vi
 ## What it checks
 
 - **Companies House:** status, filings, charges, insolvency history, directors and owners
-- **Directors' other companies:** phoenix companies and companies opened and closed in quick succession
-- **Accounts:** net assets, cash, headcount and turnover for up to three years, and going-concern warnings
+- **Directors and owners:** phoenix companies, companies opened and closed in quick succession, and the disqualified directors register
+- **Accounts:** net assets, short-term debts, cash, headcount and turnover for up to five years, and going-concern warnings. Accounts filed as PDF are read by the agent, scanned ones too on macOS
 - **Parent companies:** followed up to the UK parent
 - **The Gazette:** winding-up petitions and other insolvency notices
 - **Employer registers:** employment tribunal decisions, gender pay gap filings, the visa sponsor register and payment practice reports
-- **Court judgments:** High Court and Court of Appeal judgments that name the company as a party
+- **Court judgments:** judgments of the High Court and the courts above it on Find Case Law that name the company as a party
 - **IR35 size:** whether the company counts as small, for contractors
-- **The web:** funding, redundancies, press coverage, minimum wage naming and employee reviews
+- **The web:** funding, redundancies, press coverage, minimum wage and pension penalty naming, and employee reviews
 
 Every flag links to its evidence. Anything matched on a name alone is reported as a lead to verify, never as a finding.
 
@@ -62,7 +62,8 @@ Ask your agent, for example "check this company before I accept the offer". In C
 
 - UK companies only.
 - Glassdoor and LinkedIn have no public API, so reviews are often missing.
-- Each run downloads about 30 MB of public register data.
+- County court judgments are not checked. They are on a paid register, and the report suggests the search when the risk calls for it.
+- Each run downloads about 120 MB of public register data, most of it the payment practices file.
 - The report is put together by an AI from public sources. It can miss things or get them wrong, and it is not legal or financial advice. Check anything important at the source before you act on it.
 
 ## Keep reports private
