@@ -153,7 +153,17 @@ The script's pattern flags (phoenix, company cycling, director insolvencies) alr
 
 ## Step 4 - The report
 
-The report is one self-contained HTML page. Its content follows the outline below, and its look comes from the page shell described below. Fill in the outline first. All eleven sections appear every time, in this order, with these headings and table columns. If a section has nothing, keep the heading and write "Nothing found." Do not add, rename, merge or reorder sections; anything that does not fit goes in "Not checked and limits". Dates are YYYY-MM-DD. Every row that makes a claim carries a link.
+The report is one self-contained HTML page. Its content follows the outline below, and its look comes from the page shell described below. Fill in the outline first. All eleven sections appear every time, in this order, with these headings. If a section has nothing, keep the heading and write "Nothing found." as one line, with no empty table. Do not add, rename, merge or reorder sections; anything that does not fit goes in "Not checked and limits". Dates are YYYY-MM-DD. Every row that makes a claim carries a link.
+
+### Tables
+
+Tables carry the same columns in every report, so they can be compared, but a column or row with nothing in it only adds noise.
+
+- Leave out a column that is n/a in every row, and say in one line under the table which figures the filings did not give and why (for example, "Micro-entity accounts do not state turnover or staff costs").
+- Leave out a year whose figures are all n/a, and name it in that same line.
+- A table left with one row and two or three figures reads better as a sentence: write it as one.
+- In Company record, leave out rows that would say only "None" for previous names and insolvency history, and say "No previous names and no insolvency history" in one line under the table.
+- Never leave out a column or row that holds a finding, such as a negative figure or an overdue date.
 
 ### Plain language
 
