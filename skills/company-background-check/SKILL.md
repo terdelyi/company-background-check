@@ -38,13 +38,13 @@ Run `scripts/ch-check.mjs` from this skill's folder as it is, and write its outp
 node <skill folder>/scripts/ch-check.mjs "<company number or name>" --aka "<brand, product or website names>" > ch.json
 ```
 
-Fill in `--aka` before the first run. Companies House only knows registered names, and many companies trade under a different one: a company registered as "{Name} Holdings Ltd" may sell a product called "{Brand}", or rebrand to initials without changing its registered name. The script searches The Gazette, tribunal decisions and the sponsor register under every name it is given, and matches directors' other companies against them, so a missing brand is a missed check. Open the company's website first (its home page, footer and about page) and pass every brand, trading name, product and website name you find. If later research turns up one you did not pass, run the script again with it added and use the new output.
+Fill in `--aka` before the first run. Companies House only knows registered names, and many companies trade under a different one: a company registered as "{Name} Holdings Ltd" may sell a product called "{Brand}", or rebrand to initials without changing its registered name. The script searches The Gazette, tribunal decisions and the sponsor register under every name it is given, and matches directors' other companies against them, so a missing brand is a missed check. Open the company's website first (its home page, footer and about page) and pass every brand, trading name, product and website name you find. If later research turns up one you did not pass, run the script again with it added and use the new output. The report header lists only trading names, the names the company itself trades under, and only when one differs from the registered name. Products go to the script but not into the header.
 
 Exit codes: `0` JSON report on stdout, `2` no key or API unreachable (use path B), `3` ambiguous name (candidates on stdout, ask the user).
 
 The JSON has `company`, `directors` (active directors plus individual owners who are not directors, each with a `role`), `pscs`, `flags` (already sorted by severity, each with an evidence URL) and `meta` (caps hit, caveats). If `meta.people_without_officer_record` names anyone, the script found no officer record for that owner, so check their other companies by hand as in Path B step 3. Use the flags as given; add context, do not upgrade or drop them. There are two exceptions: the trading-name check below can raise a phoenix rating, and a tribunal decision you have read can raise a tribunal lead.
 
-`company.accounts.history` holds up to five years of accounts, newest first: net assets, cash, average employees and turnover where the filing tagged them, and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, read any `pdf` year as in "Reading PDF accounts" below: the same four figures and the going-concern note. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
+`company.accounts.history` holds up to five years of accounts, newest first: net assets, net current assets, cash, average employees, turnover, profit and staff costs where the filing tagged them, `payroll_months_in_cash` (cash divided by a month of staff costs), and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, read any `pdf` year as in "Reading PDF accounts" below: the same four figures and the going-concern note. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
 
 `company.gazette` holds the corporate insolvency notices from The Gazette in the last five years that carry this company's number. A petition to wind up appears there weeks before Companies House shows anything, so the script flags one from the last 24 months as high and any other notice as medium. `meta.gazette_name_only` lists notices that matched a name but not the number: open each, and treat it as this company's only if the address or a director's name confirms it, then rate it as the script would and say you did so by hand. If `company.gazette.failed_searches` is not empty, search The Gazette by hand for those names and note it in "Not checked and limits".
 
@@ -96,17 +96,28 @@ A phoenix company is a new company continuing the business of one that went inso
 - Insolvency plus any one other signal: **possible** (medium).
 - One dissolved company with no insolvency is normal housekeeping, not a flag.
 - A members' voluntary liquidation is a solvent wind-up: the directors declare the company can pay its debts in full, and groups use it to close subsidiaries they no longer need. It is not insolvency. The script marks these `solvent_liquidation` and leaves them out of the phoenix test and the Insolvent count. In path B, open the Insolvency tab before counting a liquidation as insolvency.
-- **Serial cycling**: two or more closed companies in the last 10 years that share the target's name (current or previous names on either side) or its registered postcode. Some operators open a new company every year or two, move the business across and close or merge the old one, so each step looks harmless and only the chain gives it away. Medium at two, high at three or more or when any of them was insolvent. List the chain in date order with each company's years. A subsidiary of the target, owned directly or through other group companies, that closed without insolvency is the group tidying up, not cycling: the script marks these `group_member` and leaves them out. In path B, open the Persons with significant control tab of each closed company before counting it.
+- **Serial cycling**: two or more closed companies in the last 10 years that share the target's name (current or previous names on either side) or its registered postcode. Some operators open a new company every year or two, move the business across and close or merge the old one, so each step looks harmless and only the chain gives it away. Medium at two, high at three or more or when any of them failed while the director was in post. Solvent liquidations are listed in the chain but do not count towards the three for high. List the chain in date order with each company's years. A company in the target's own group, meaning a subsidiary or a sister owned by one of the target's parents, that closed without insolvency is the group tidying up, not cycling: the script marks these `group_member` and leaves them out. In path B, open the Persons with significant control tab of each closed company before counting it.
 
 Companies House does not record that one company's business was merged into another. The chain of shared directors, names and addresses is the evidence: present it as that, and do not state a merger as fact unless a filing or news source confirms it.
 
-A director who left the old company more than a year before it failed did not run it into insolvency, so it is not linked to them: no phoenix rating, and it does not count towards their insolvencies. The script marks these `director_left_before_failure` and dates the failure as `insolvent_from`. In path B, check the resignation date against the Insolvency tab. List such companies in the report only as context, and say when the director left. Directors of a company in liquidation often stay on the register with no resignation date, although their powers ended when it went into liquidation. Write that they were a director when it went into liquidation and that no resignation is recorded, not that they are a director of it.
+A director who left the old company more than a year before it failed did not run it into insolvency, so it is not linked to them: no phoenix rating, and it does not count towards their insolvencies. The script marks these `director_left_before_failure` and dates the failure as `insolvent_from`. The same goes for a director appointed after the failure, marked `director_joined_after_failure`. In path B, check the appointment and resignation dates against the Insolvency tab. List such companies in the report only as context, and say when the director left. Directors of a company in liquidation often stay on the register with no resignation date, although their powers ended when it went into liquidation. Write that they were a director when it went into liquidation and that no resignation is recorded, not that they are a director of it.
 
 For each failed company still linked to a director, the script also searches employment tribunal decisions that name it as respondent, at any date, attaches them as `tribunal_decisions` and raises one low `failed_company_tribunals` flag per company. Claims for unpaid wages, notice or redundancy pay at a company that failed are the clearest sign its staff were left unpaid. Open the decisions about pay and read the outcome. If one went against the company, raise the flag to medium, link it and mention it in the phoenix check. It searches the 10 most relevant companies, phoenix matches first: name `meta.failed_company_tribunals.not_searched` and `failed_searches` under "Not checked and limits". The search uses the registered name, which often runs words together ("MYHEALTHBOX") where a decision spaces them ("My Health Box"). For such a name, search the [tribunal decisions](https://www.gov.uk/employment-tribunal-decisions) by hand with the words split.
 
 **Trading-name check (do this by hand).** The register does not record what a company traded as, so the script cannot see that an insolvent company with an unrelated registered name sold the same product the target is now named after. For every company in `failed_companies` with the `insolvency` signal, find out what it traded as: search `<old company name> trading as`, read its Gazette notices, look for a brand page on a company-data site, and check the target's website for old terms and conditions naming a different company. If it traded under the target's name or brand, count that as a similar name and re-rate with the rules above. Say in the report that you raised the rating by hand and link the evidence.
 
 **Previous addresses.** A liquidator moves the registered office to their own address, so the current address of an insolvent company tells you nothing. The script compares earlier registered offices from the filing history. In path B do the same by hand, and also compare the "principal trading address" printed in the Gazette notice.
+
+### Other patterns that leave staff unpaid
+
+A phoenix is one of several legal or semi-legal setups that can leave staff owed money when a company fails. When the government pays staff of a failed employer, it caps a week's pay and pays at most 8 weeks of arrears, so the setup matters. Each check below names a pattern in the records, never a motive. Report what the record shows, and rate it as stated.
+
+- **Employer without assets.** The script raises `employer_without_assets` (low) when a company with 10 or more staff owes more than it owns, or its short-term debts exceed its short-term assets. Find out which company owns the brand, the website domain, the customer contracts and any trade marks: the website's terms and privacy pages, the UK trade mark register (https://trademarks.ipo.gov.uk), and the group's accounts. If a related company holds them while the employer has net liabilities, raise the flag to medium and say which company holds what, with links. If the employer owns them itself, keep it low and say so.
+- **Pre-pack sale.** For every insolvent company in the phoenix check that went into administration, open its filing history for the administrator's proposals and any SIP 16 statement (the administrator's report on a sale agreed before the administration started). If the business was sold to the target, or to another company of the same directors, say so and link it. It counts as a similar name in the phoenix test even when the names differ.
+- **Financial year extended.** The script raises `year_end_extended` from the filing history: low for one extension in five years, medium for two or more. Lengthening the year pushes back when the next accounts are due. Mention it under Money and say when the next accounts are now due.
+- **Reliance on the group.** When reading full accounts, note the amounts owed to other group companies, management charges paid to a parent, and whether the going-concern note relies on a parent's promise of support. Report these under Money as context, not as a flag, unless the parent providing support has its own finding.
+- **Unpaid pension contributions.** See the Pensions Regulator row in step 2. Missing pension payments are often the first sign that a company is short of cash.
+- **Contractor-only hiring.** If the company's job ads offer roles that look permanent only through an umbrella company or the worker's own limited company, mention it under section 8 as context. It moves employment rights and tax risk onto the worker.
 
 ## Step 2 - Web research
 
@@ -119,6 +130,7 @@ Run these searches (in parallel where possible), look back about five years, and
 | Media coverage | `<name> news`, `<name> <CEO or founder name>` | Up to 8 items: date, outlet, headline, tone |
 | Legal and financial trouble | `<name> administration insolvency winding up`, `<name> employment tribunal`, `<name> The Gazette notice`, `<name> lawsuit fine investigation` | Tribunal decisions, winding-up petitions, regulator action, unpaid wages or other money owed to staff |
 | Paying suppliers | Search the company on check-payment-practices.service.gov.uk (only larger companies report) | Average days to pay and share paid within 30 days in the latest report. More than 60 days on average, or under half paid on time, is a Caution under Money |
+| Unpaid pensions | Search the company's name on the Pensions Regulator's published penalty notices and court orders (https://www.thepensionsregulator.gov.uk/en/document-library/enforcement-activity/penalty-notices) and `<name> pensions regulator penalty` | A named entry that matches the company's name and town is a medium flag under Legal and insolvency notices, linked to the notice |
 | Minimum wage | `HMRC national minimum wage named employers <name>` and the latest gov.uk naming list | A named entry that matches the company's name and town is a medium flag under Legal and insolvency notices, linked to the list |
 | Employee reviews | `<name> Glassdoor reviews`, `<name> Indeed reviews` | Rating, review count, recurring themes |
 | Presence | `<name> LinkedIn`, the company website | Headcount and trend if visible, whether the site and the registered details agree, current hiring |
@@ -135,11 +147,24 @@ Run these searches (in parallel where possible), look back about five years, and
 - **MEDIUM** - any medium-severity flag, redundancies in the last 12 months, two or more rounds of redundancies in the last five years, mostly negative coverage, or a review rating below 3.0.
 - **LOW** - none of the above.
 
-If Companies House could not be checked for a UK company, write the rating as "LOW (limited data)" at best. A missing check is not a clean result.
+If Companies House could not be checked for a UK company, write the rating as "LOW (limited data)" at best. A missing check is not a clean result. When the record was checked but is too short to say much, because the company is under two years old, has filed one set of accounts or fewer, or has no employees, write "LOW (thin record)" instead of a plain LOW. In the HTML report the rating and the scale say only "Low", and the qualifier ("Limited data" or "Thin record") goes on its own line below the rating.
+
+The script's pattern flags (phoenix, company cycling, director insolvencies) already leave out the target's own group, solvent liquidations and failures that happened before a director joined or more than a year after they left. Use them as rated. If a pattern flag still looks like group housekeeping after the hand checks, keep its rating and say in the flag's row what the evidence shows, with a link, such as an accounts note on closing dormant subsidiaries.
 
 ## Step 4 - The report
 
 The report is one self-contained HTML page. Its content follows the outline below, and its look comes from the page shell described below. Fill in the outline first. All eleven sections appear every time, in this order, with these headings and table columns. If a section has nothing, keep the heading and write "Nothing found." Do not add, rename, merge or reorder sections; anything that does not fit goes in "Not checked and limits". Dates are YYYY-MM-DD. Every row that makes a claim carries a link.
+
+### Plain language
+
+The reader is an ordinary employee or job seeker, not a lawyer or accountant. Write so they can follow every line without looking anything up, and without losing any detail that accuracy needs.
+
+- Say what a finding means for the company and its staff, in everyday words. "The company owes more than it owns" before "net liabilities of £{amount}".
+- Keep a legal or accounting term when it is the exact word on the record, because the reader may search for it or quote it to someone. Explain it in a few words the first time it appears: "entered administration (an insolvency process where an administrator takes control to rescue or sell the business)".
+- These terms always get a short explanation on first use: administration, liquidation (creditors' or members' voluntary, compulsory), solvent liquidation, company voluntary arrangement, winding-up petition, Gazette notice, charge, person with significant control, going concern, material uncertainty, net assets, net current assets or liabilities, micro-entity accounts, dormant, strike-off, phoenix pattern, company cycling.
+- Use the plain term where nothing is lost: "owner" for person with significant control after the first mention, "lender security" for charge, "short-term debts" for current liabilities, "closed" for dissolved.
+- Short sentences, one point each. No Latin, no "thereof", "pursuant to" or "in respect of".
+- Plain words never replace precision. Keep exact dates, amounts, company names and numbers, and say whose record a finding is.
 
 Save the page as `<company-name>-background-check.html` and open it in the user's browser: `open <file>` on macOS, `xdg-open <file>` on Linux, `start "" <file>` on Windows. Where there is no local browser, such as on claude.ai or in a sandbox, send it as a file instead. Do not publish it to a shareable URL: it puts real people's names next to risk flags, and who sees it is the user's call. In the chat, write one short paragraph of two or three sentences, with no lists or headings: the risk rating with its reason and anything important you could not check. Everything else, including what to verify next, lives in the file, so do not repeat it. Do not comment on this skill or its scripts in the reply. If the user asks for plain text instead, give the outline as markdown.
 
@@ -167,15 +192,15 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 | Last accounts | {made up to} ({type}) |
 | Next accounts due | {date} {OVERDUE if so} |
 | Confirmation statement | {next due} {OVERDUE if so} |
-| Outstanding charges | |
+| Outstanding charges | {count, then the latest one's date and lender} |
 | Insolvency history | |
 | Source | [Companies House]({url}) |
 
 **Financials** (up to five years, newest first; "n/a" where a figure was not tagged or stated)
 
-| Year end | Net assets | Cash | Avg employees | Turnover | Format |
-|---|---|---|---|---|---|
-| {YYYY-MM-DD} | {£} | {£} | {n} | {£} | {iXBRL, PDF (read by hand), PDF (not read) or Unavailable} |
+| Year end | Net assets | Net current assets | Cash | Payroll cover | Avg employees | Turnover | Format |
+|---|---|---|---|---|---|---|---|
+| {YYYY-MM-DD} | {£} | {£} | {£} | {n} months | {n} | {£} | {iXBRL, PDF (read by hand), PDF (not read) or Unavailable} |
 
 ## 3. Directors and owners
 
@@ -240,6 +265,8 @@ The section is not a place for notes about this skill: if a run exposes a gap in
 
 ### Scorecard
 
+The verdict box above it holds two sentences only: the main reason for the rating, at most 25 words, and one line of context, at most 20 words. Figures and secondary findings belong in the scorecard lines, not there.
+
 The page opens with a scorecard so the reader gets the picture before the detail: the overall risk from step 3, then the same eight areas every time, in this order. Each area gets one status and one line of text.
 
 | Area | What it covers |
@@ -256,9 +283,11 @@ The page opens with a scorecard so the reader gets the picture before the detail
 Statuses:
 
 - **Concern** - a high-severity finding in that area.
-- **Caution** - a medium-severity finding, or a gap that matters.
-- **Clear** - checked, nothing adverse.
-- **No data** - nothing to judge from.
+- **Caution** - a medium-severity finding, or a named gap that matters (say which in the line).
+- **Clear** - checked, nothing adverse. Low and info flags are mentioned in the line but leave the area Clear.
+- **No data** - nothing to judge from. A search that found nothing is never Caution. For register checks (Gazette, tribunals, insolvency, redundancies) nothing found means nothing recorded, so the area is Clear. For media coverage and employee reviews, no results tell you nothing, so the area is No data.
+
+The status and its line must agree: a line that explains a finding away cannot sit under Concern. Under Money, payroll cover under three months in the latest year is a named gap (Caution).
 
 For "Coverage of this check": Clear when the API path ran with no caps hit, Caution for path B, stale data or caps hit, Concern when the registry could not be checked at all. The scorecard never contradicts the Red flags table: every high flag shows as a Concern in its area. A `parent_` flag counts in the same area as the flag without the prefix, and the area's line names the parent.
 

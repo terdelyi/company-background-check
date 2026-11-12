@@ -25,14 +25,17 @@
 
   .doc-type { margin: 0; color: var(--muted); font-size: .93rem; }
   h1 { margin: .1em 0 .45em; font-family: var(--serif); font-weight: 600; font-size: 2.9rem; line-height: 1.08; letter-spacing: -.01em; }
-  .meta { display: grid; grid-template-columns: repeat(4, auto); justify-content: start; gap: 4px 36px; margin: 0 0 28px; }
+  .meta { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: 12px 36px; margin: 0 0 28px; }
+  .meta__wide { grid-column: 1 / -1; }
+  .meta__wide dd { font-weight: 400; }
   .meta dt { color: var(--muted); font-size: .8rem; }
   .meta dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-  .verdict { display: grid; grid-template-columns: 250px 1fr; border-radius: 6px; overflow: hidden; border: 1px solid var(--rule); }
-  .verdict__rating { padding: 22px 26px 20px; color: #fff; }
+  .verdict { display: grid; grid-template-columns: 250px 1fr; border-radius: 6px; overflow: hidden; }
+  .verdict__rating { padding: 22px 26px 20px; color: #fff; display: flex; flex-direction: column; justify-content: center; }
   .verdict__rating p { margin: 0; font-size: .87rem; opacity: .9; }
   .verdict__rating strong { display: block; font-family: var(--serif); font-weight: 600; font-size: 3.6rem; line-height: 1; margin: 2px 0 14px; }
+  .verdict__rating .verdict__qualifier { margin: -6px 0 14px; font-weight: 600; opacity: 1; }
   .scale { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin: 0; padding: 0; list-style: none; font-size: .73rem; }
   .scale li { padding: 3px 0; text-align: center; border-radius: 2px; background: rgba(255,255,255,.22); color: rgba(255,255,255,.85); }
   .scale li[aria-current="true"] { background: #fff; font-weight: 700; }
@@ -64,7 +67,7 @@
   .area--nodata .status, .chip--low, .chip--info, .chip--neutral { background: var(--none-tint); color: var(--none); }
   .key { margin: 8px 0 0; font-size: .8rem; color: var(--muted); }
 
-  h2 { margin: 44px 0 10px; padding-top: 14px; border-top: 2px solid var(--ink); font-family: var(--serif); font-weight: 600; font-size: 1.55rem; line-height: 1.2; }
+  h2 { margin: 44px 0 10px; font-family: var(--serif); font-weight: 600; font-size: 1.55rem; line-height: 1.2; }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: .93rem; }
   th, td { padding: 8px 12px 8px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rule); }
@@ -131,8 +134,9 @@
     <dl class="meta">
       <div><dt>Company number</dt><dd>{number or n/a}</dd></div>
       <div><dt>Jurisdiction</dt><dd>{jurisdiction}</dd></div>
-      <div><dt>Trades as</dt><dd>{brand names, or "Same name"}</dd></div>
       <div><dt>Checked on</dt><dd>{YYYY-MM-DD}</dd></div>
+      <!-- Only when a trading name was found that differs from the registered name. Never products. -->
+      <div class="meta__wide"><dt>Trades as</dt><dd>{trading names}</dd></div>
     </dl>
   </header>
 
@@ -142,9 +146,12 @@
       <div class="verdict__rating">
         <p>Overall risk</p>
         <strong>{High|Medium|Low}</strong>
+        <!-- Only for a Low with a qualifier: "Thin record" or "Limited data". Never inside the rating or the scale. -->
+        <p class="verdict__qualifier">{Qualifier}</p>
         <ol class="scale" aria-label="Risk scale"><li>Low</li><li>Medium</li><li>High</li></ol>
       </div>
       <div class="verdict__reason">
+        <!-- One sentence each, 25 words at most for the reason and 20 for the context. Detail goes in the scorecard lines. -->
         <p>{One sentence giving the main reason for the rating.}</p>
         <p class="small">{One sentence of context: what this does and does not mean.}</p>
       </div>
@@ -181,9 +188,9 @@
     </tbody></table></div>
     <h3 class="subhead">Financials</h3>
     <div class="table-wrap"><table>
-      <thead><tr><th>Year end</th><th class="num">Net assets</th><th class="num">Cash</th><th class="num">Avg employees</th><th class="num">Turnover</th><th>Format</th></tr></thead>
-      <!-- Newest first, up to three years. "n/a" where a figure was not tagged or stated. Format: iXBRL, PDF (read by hand) or Unavailable. -->
-      <tbody><tr><td class="nowrap">{YYYY-MM-DD}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{n}</td><td class="nowrap num">{£}</td><td>{Format}</td></tr></tbody>
+      <thead><tr><th>Year end</th><th class="num">Net assets</th><th class="num">Net current assets</th><th class="num">Cash</th><th class="num">Payroll cover</th><th class="num">Avg employees</th><th class="num">Turnover</th><th>Format</th></tr></thead>
+      <!-- Newest first, up to three years. "n/a" where a figure was not tagged or stated. Payroll cover is months of staff costs the cash would pay. Format: iXBRL, PDF (read by hand) or Unavailable. -->
+      <tbody><tr><td class="nowrap">{YYYY-MM-DD}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{£}</td><td class="nowrap num">{n} months</td><td class="nowrap num">{n}</td><td class="nowrap num">{£}</td><td>{Format}</td></tr></tbody>
     </table></div>
   </section>
 

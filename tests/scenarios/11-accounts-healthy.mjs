@@ -11,7 +11,7 @@ export default {
     flags: [],
     fields: {
       'company.accounts.history.length': 3,
-      'company.accounts.history.0': { year_end: '2025-03-31', filed: '2025-09-12', format: 'ixbrl', net_assets: 1250000, cash: 310000, employees: 42, turnover: 4200000 },
+      'company.accounts.history.0': { year_end: '2025-03-31', filed: '2025-09-12', format: 'ixbrl', net_assets: 1250000, cash: 310000, employees: 42, turnover: 4200000, net_current_assets: null, profit: null, staff_costs: null, payroll_months_in_cash: null },
       'company.accounts.history.1.net_assets': 1105000,
       'company.accounts.history.2.net_assets': 980000.5,
       'company.accounts.history.2.employees': 0,
