@@ -41,6 +41,10 @@ export function mergeRoutes(scenarios) {
 
 const failedCalls = new Map();
 
+export function resetFailures() {
+  failedCalls.clear();
+}
+
 /** @returns {{ status: number, headers: Record<string, string>, body: string, miss?: string }} */
 export function answer(routes, url, hasAuth) {
   const key = routeKey(url);
@@ -61,11 +65,11 @@ export function answer(routes, url, hasAuth) {
   }
   let route = routes.get(key);
   if (route.failFirst !== undefined) {
-    // { failFirst: n, then: route } answers 503 n times, like a service having a bad moment
+    // { failFirst: n, failStatus?, then: route } fails n times (503 unless given), like a service having a bad moment
     const calls = (failedCalls.get(key) || 0) + 1;
     failedCalls.set(key, calls);
     if (calls <= route.failFirst) {
-      return { status: 503, headers: {}, body: '' };
+      return { status: route.failStatus ?? 503, headers: {}, body: '' };
     }
     route = route.then;
   }
