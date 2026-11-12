@@ -58,6 +58,8 @@ Without a key the skill falls back to the public Companies House pages, which is
 
 Ask your agent, for example "check this company before I accept the offer". In Claude Code you can also run `/company-background-check <company name or number>`. The registered name or company number works best, because many companies trade under a different name.
 
+Use a capable model at its default effort or higher. The script's checks are the same on any model, but reading PDF accounts, tribunal decisions and court judgments, and writing carefully about named people, are done by the agent.
+
 ## Limits
 
 - UK companies only.
