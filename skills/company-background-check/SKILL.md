@@ -11,7 +11,7 @@ Two things matter more than anything else:
 
 - **Flags, not verdicts.** Every claim links to its evidence. Name-based matches are leads to verify, and the report says so. A wrong accusation about a named director is worse than a missed flag.
   - State what the record shows and when: "Placeholder Ltd entered creditors' voluntary liquidation on 2024-03-01", not what it means about anyone. Never call a company or person fraudulent, dishonest, a scam, a rogue or a "phoenix operator", and never guess at motives, in the report or in the chat. "Phoenix pattern" names a pattern in the records, not a person.
-  - Say whose record it is. A parent's or another company's finding is theirs, and a director's other companies are theirs, not the employer's.
+  - Say whose record it is. A parent's or another company's finding is theirs, and a director's other companies are theirs, not the employer's. In the red flags table, a flag that is not the employer's own record carries a tag naming whose it is: "Parent company" for `parent`, "Director's other company" for `director`, "Group company" or "Another company" for findings you add by hand.
 - **Same layout every time.** Reports get compared side by side, so the template in step 4 is fixed.
 
 ## Input
@@ -42,7 +42,7 @@ Fill in `--aka` before the first run. Companies House only knows registered name
 
 Exit codes: `0` JSON report on stdout, `2` no key or API unreachable (use path B), `3` ambiguous name (candidates on stdout, ask the user).
 
-The JSON has `company`, `directors` (active directors plus individual owners who are not directors, each with a `role`), `pscs`, `flags` (already sorted by severity, each with an evidence URL) and `meta` (caps hit, caveats). If `meta.people_without_officer_record` names anyone, the script found no officer record for that owner, so check their other companies by hand as in Path B step 3. Use the flags as given; add context, do not upgrade or drop them. There are two exceptions: the trading-name check below can raise a phoenix rating, and a tribunal decision you have read can raise a tribunal lead.
+The JSON has `company`, `directors` (active directors plus individual owners who are not directors, each with a `role`), `pscs`, `flags` (already sorted by severity, each with an evidence URL and a `record` of `own`, `parent` or `director` saying whose record it comes from) and `meta` (caps hit, caveats). If `meta.people_without_officer_record` names anyone, the script found no officer record for that owner, so check their other companies by hand as in Path B step 3. Use the flags as given; add context, do not upgrade or drop them. There are two exceptions: the trading-name check below can raise a phoenix rating, and a tribunal decision you have read can raise a tribunal lead.
 
 `company.accounts.history` holds up to five years of accounts, newest first: net assets, net current assets, cash, average employees, turnover, profit and staff costs where the filing tagged them, `payroll_months_in_cash` (cash divided by a month of staff costs), and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, read any `pdf` year as in "Reading PDF accounts" below: the same four figures and the going-concern note. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
 
@@ -153,7 +153,7 @@ The script's pattern flags (phoenix, company cycling, director insolvencies) alr
 
 ## Step 4 - The report
 
-The report is one self-contained HTML page. Its content follows the outline below, and its look comes from the page shell described below. Fill in the outline first. All eleven sections appear every time, in this order, with these headings. If a section has nothing, keep the heading and write "Nothing found." as one line, with no empty table. Do not add, rename, merge or reorder sections; anything that does not fit goes in "Not checked and limits". Dates are YYYY-MM-DD. Every row that makes a claim carries a link.
+The report is one self-contained HTML page. Its content follows the outline below, and its look comes from the page shell described below. Fill in the outline first. All eleven sections appear every time, in this order, with these headings. If a section has nothing, keep the heading and write "Nothing found." as one line, with no empty table. Do not add, rename, merge or reorder sections; anything that does not fit goes in "Not checked and limits". In tables and the company record, write dates as day, short month and year ("4 Apr 2026"). In running text, month and year is enough ("in Apr 2026", "at the end of Jun 2025") unless the exact day matters, such as a deadline. Every row that makes a claim carries a link.
 
 ### Tables
 
@@ -174,6 +174,7 @@ The reader is an ordinary employee or job seeker, not a lawyer or accountant. Wr
 - These terms always get a short explanation on first use: administration, liquidation (creditors' or members' voluntary, compulsory), solvent liquidation, company voluntary arrangement, winding-up petition, Gazette notice, charge, person with significant control, going concern, material uncertainty, net assets, net current assets or liabilities, micro-entity accounts, dormant, strike-off, phoenix pattern, company cycling.
 - Use the plain term where nothing is lost: "owner" for person with significant control after the first mention, "lender security" for charge, "short-term debts" for current liabilities, "closed" for dissolved.
 - Short sentences, one point each. No Latin, no "thereof", "pursuant to" or "in respect of".
+- No bold run-in lead-ins ("**Label.** Text"). Where the template gives a list item or flag a label, write the label as a few words with no full stop, and the template shows it on its own line.
 - Plain words never replace precision. Keep exact dates, amounts, company names and numbers, and say whose record a finding is.
 
 Save the page as `<company-name>-background-check.html` and open it in the user's browser: `open <file>` on macOS, `xdg-open <file>` on Linux, `start "" <file>` on Windows. Where there is no local browser, such as on claude.ai or in a sandbox, send it as a file instead. Do not publish it to a shareable URL: it puts real people's names next to risk flags, and who sees it is the user's call. In the chat, write one short paragraph of two or three sentences, with no lists or headings: the risk rating with its reason and anything important you could not check. Everything else, including what to verify next, lives in the file, so do not repeat it. Do not comment on this skill or its scripts in the reply. If the user asks for plain text instead, give the outline as markdown.
@@ -181,7 +182,7 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 ```markdown
 # Background check: {Company name}
 
-**Checked:** {YYYY-MM-DD} | **Company no.:** {number or n/a} | **Jurisdiction:** {e.g. England and Wales}
+**Checked:** {D Mon YYYY} | **Company no.:** {number or n/a} | **Jurisdiction:** {e.g. England and Wales}
 **Risk:** {LOW | MEDIUM | HIGH} - {one sentence giving the main reason}
 
 ## 1. Red flags
@@ -210,12 +211,13 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 
 | Year end | Net assets | Net current assets | Cash | Payroll cover | Avg employees | Turnover | Format |
 |---|---|---|---|---|---|---|---|
-| {YYYY-MM-DD} | {£} | {£} | {£} | {n} months | {n} | {£} | {iXBRL, PDF (read by hand), PDF (not read) or Unavailable} |
+| {D Mon YYYY} | {£} | {£} | {£} | {n} months | {n} | {£} | {iXBRL, PDF (read by hand), PDF (not read) or Unavailable} |
 
 ## 3. Directors and owners
 
-| Name | Role | Since | Other roles | Dissolved | Insolvent | Notes |
-|---|---|---|---|---|---|---|
+| Director | Since | Other companies | Notes |
+|---|---|---|---|
+| {name}, with the role on a second line | {D Mon YYYY} | {count of other appointments, with how many closed and how many insolvent in brackets, such as "11 (4 closed, 1 insolvent)", or "None"} | {one or two short sentences. Failed companies and patterns go in the phoenix check and red flags, not here} |
 
 **Owners (PSCs):** {names and level of control}
 **Group:** {UK parents in order up the chain, each with its status and any finding, or "No corporate owner"; owners not followed and why}

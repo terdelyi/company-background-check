@@ -19,7 +19,7 @@ export default {
       'high accounts_overdue', 'high strike_off_notice', 'medium confirmation_overdue', 'medium renames',
       'medium director_churn', 'low young_company', 'info charges', 'info no_psc',
     ],
-    fields: { 'company.resigned_last_12_months': 2, 'company.outstanding_charges': 1 },
+    fields: { 'flags.0.record': 'own', 'company.resigned_last_12_months': 2, 'company.outstanding_charges': 1 },
   },
   routes: {
     ...companyRoutes(target, {
