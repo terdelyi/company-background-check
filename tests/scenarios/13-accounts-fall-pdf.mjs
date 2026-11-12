@@ -13,7 +13,7 @@ export default {
       'company.accounts.history.0.net_assets': 30000,
       'company.accounts.history.1': { year_end: '2024-06-30', filed: '2025-03-01', format: 'pdf',
         document: { url: 'https://find-and-update.company-information.service.gov.uk/company/ZZ000013/filing-history/TX-DOC-ZZ13-2024/document?format=pdf&download=0', pages: 12, scanned: true },
-        net_assets: 100000, cash: null, employees: 4, turnover: null, net_current_assets: null, profit: null, staff_costs: null, payroll_months_in_cash: null },
+        net_assets: 100000, cash: null, employees: 4, turnover: null, net_current_assets: null, profit: null, staff_costs: null, fixed_assets: null, current_assets: null, payroll_months_in_cash: null },
       'company.accounts.history.2.format': 'unavailable',
       'company.accounts.history.2.net_assets': null,
       'company.accounts.going_concern_doubt': false,

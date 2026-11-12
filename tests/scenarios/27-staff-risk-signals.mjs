@@ -16,6 +16,8 @@ export default {
       'company.accounts.history.0.net_current_assets': -40000,
       'company.accounts.history.0.staff_costs': 600000,
       'company.accounts.history.0.payroll_months_in_cash': 1.5,
+      'company.ir35_size.status': 'probably small',
+      'company.ir35_size.basis': 'filed micro-entity accounts',
       'company.charges': [{ created_on: '2026-01-15', lenders: ['Example Capital Partners Ltd'], type: 'A registered charge' }],
       'flags.0.text': 'Financial year extended 2 times in the last 5 years (2025-09-01 to a year end of 2025-06-30 and 2023-03-01 to a year end of 2023-06-30), which delays the next accounts',
     },

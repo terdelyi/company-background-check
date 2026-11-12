@@ -18,8 +18,10 @@ An agent skill that runs a background check on a UK company from the point of vi
 - **Accounts:** net assets, cash, headcount and turnover for up to three years, and going-concern warnings
 - **Parent companies:** followed up to the UK parent
 - **The Gazette:** winding-up petitions and other insolvency notices
-- **Employer registers:** employment tribunal decisions, gender pay gap filings and the visa sponsor register
-- **The web:** funding, redundancies, press coverage, late payment, minimum wage naming and employee reviews
+- **Employer registers:** employment tribunal decisions, gender pay gap filings, the visa sponsor register and payment practice reports
+- **Court judgments:** High Court and Court of Appeal judgments that name the company as a party
+- **IR35 size:** whether the company counts as small, for contractors
+- **The web:** funding, redundancies, press coverage, minimum wage naming and employee reviews
 
 Every flag links to its evidence. Anything matched on a name alone is reported as a lead to verify, never as a finding.
 
