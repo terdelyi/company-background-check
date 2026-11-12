@@ -221,7 +221,7 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 
 **Owners (PSCs):** {names and level of control}
 **Group:** {UK parents in order up the chain, each with its status and any finding, or "No corporate owner"; owners not followed and why}
-**Phoenix check:** {None found | Possible | Strong | Serial} - {one sentence, naming the companies involved; for a chain, list them in date order with their years}
+**Phoenix check:** {Possible | Strong | Serial} - {one sentence, naming the companies involved; for a chain, list them in date order with their years}. Only when a pattern was found. When none was, leave the block out entirely and do not describe what was looked for.
 
 ## 4. Funding and investment
 
@@ -284,7 +284,7 @@ The page opens with a scorecard so the reader gets the picture before the detail
 | Area | What it covers |
 |---|---|
 | Company record | Status, age, filings, registered office |
-| People and phoenix check | Directors, owners, phoenix and cycling patterns, disqualifications |
+| Directors and owners | Directors, owners, phoenix and cycling patterns, disqualifications. Name a pattern in the line only when one was found |
 | Money | Accounts (net assets, cash, going concern), charges, funding, paying suppliers |
 | Redundancies | Layoffs, restructuring and a falling headcount in the accounts over the last five years. A single round more than a year ago is listed but stays Clear |
 | Legal and insolvency notices | Gazette notices, tribunal decisions, minimum wage naming, regulator action |
