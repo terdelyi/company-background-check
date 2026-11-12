@@ -1,6 +1,9 @@
-<img src=".github/logo.png" alt="" width="96">
-
-# Company background check
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.png">
+    <img src=".github/logo-light.png" alt="Company background check" width="520">
+  </picture>
+</h1>
 
 [![skills.sh](https://skills.sh/b/terdelyi/company-background-check)](https://skills.sh/terdelyi/company-background-check)
 
