@@ -5,6 +5,7 @@
 - `skills/company-background-check/`: the skill itself, and the only folder that gets installed
   - `SKILL.md`: the instructions and the report outline
   - `scripts/ch-check.mjs`: the Companies House check. No dependencies, nothing to build. It runs on Node 18+ (the first with built-in `fetch`), but the README asks for 22+ because older versions are end of life
+  - `scripts/site-pages.mjs`: lists a company website's own pages from its sitemap and home page links, and picks out the sentences on each that claim customers, partners, funding or testimonials
   - `scripts/pdf-text-macos.js`: reads scanned PDF accounts with macOS text recognition, one of several ways SKILL.md lists for reading PDFs. Not covered by the script tests, so try it on a real scanned filing after changing it
   - `references/report-shell.html`: the page template the report is filled into
 - `tests/`: the mock API, fictional scenarios and the script test runner
@@ -38,6 +39,7 @@ These check the Companies House script against a mock of the API, with the clock
 ```bash
 node tests/run.mjs            # every scenario
 node tests/run.mjs phoenix    # scenarios whose name contains "phoenix"
+node --test tests/*.test.mjs  # the website page lister
 ```
 
 Each file in `tests/scenarios/` describes one fictional company: the API responses it needs and the flags and fields the script must return.
