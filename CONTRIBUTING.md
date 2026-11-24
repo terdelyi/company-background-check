@@ -10,6 +10,20 @@
 - `tests/`: the mock API, fictional scenarios and the script test runner
 - `evals/`: whole-skill test cases
 
+## Keep the report simple
+
+The reader is an employee or job seeker deciding about a job, not an analyst. Every visible addition costs them reading time, so it has to earn its place. Check a change against these before opening a PR:
+
+- Follow the plain language rules in SKILL.md for any new wording, including labels and headings. Prefer the word a reader already knows over the precise term an analyst would use: "Parent (ownership register)", not "Inferred parent".
+- Keep the eleven report sections and the eight scorecard areas. Fit new findings into the section they belong to, or "Not checked and limits".
+- Show new content only when it applies. When there is nothing to show, write one sentence or leave it out, never an empty table or panel. A simple company should get a report about as long as before.
+- Put a limit on any list or table that can grow, and say below it how many items were left out, with a link to the full record. The timeline's 10-row cap is the example.
+- State each fact once. If a detail block backs up a summary line, the summary gives the conclusion and the block gives the evidence, without repeating each other.
+- Work that makes the checks more accurate without changing what the reader sees is always welcome. A visible addition needs a reason in the PR description, written from the reader's side: what decision it helps them make.
+- Put agent instructions that only some companies need in a reference file, and have SKILL.md load it under a stated condition, as it does with `references/evidence-and-funding.md`.
+- When a PR changes the report, attach two rendered reports for fictional companies: one simple company with nothing unusual and one the change is aimed at. A PR is public, so never attach a report on a real company.
+- Copy uses sentence case and no em dashes, matching SKILL.md.
+
 ## Test data is fictional
 
 Company numbers use the `ZZ` prefix, which Companies House never issues, and no test names a real company or person. Keep it that way:
