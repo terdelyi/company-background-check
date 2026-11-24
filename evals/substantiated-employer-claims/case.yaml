@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: substantiated-employer-claims
+expected_outcome: |
+  The report verifies material claims to their actual scope and dates, retains the payment and adjudicated debt evidence, and recommends a paid CCJ lookup only as a material follow-up. It preserves the established report and scorecard.

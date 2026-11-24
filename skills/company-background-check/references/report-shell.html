@@ -132,7 +132,7 @@
     .sheet { max-width: none; margin: 0; padding: 0; box-shadow: none; }
     h1 { font-size: 26pt; }
     h2 { margin-top: 18pt; break-after: avoid; }
-    .ownership h3 { break-after: avoid; }
+    .ownership h3, .timeline-heading, .timeline-window { break-after: avoid; }
     tr, .area, .verdict, .callout, .plain-list li, .ownership__list li { break-inside: avoid; }
     thead { display: table-header-group; }
     .table-wrap { overflow: visible; }
@@ -213,6 +213,14 @@
     <!-- One short note per point for the latest year: net assets, net current assets, figures not shown. Wording in SKILL.md under Financials. -->
     <p class="note">{Net assets is everything the company owns minus everything it owes. …}</p>
     <p class="note">{Net current assets compares the bills due within a year with the cash and customer payments due in the same time. …}</p>
+    <h3 class="subhead timeline-heading">Material events after the accounts</h3>
+    <p class="note timeline-window">{Latest filed accounts year-end and scope of the evidence checked, or why the start could not be set.}</p>
+    <!-- Up to 10 rows, oldest first. Label the effective date, deadline, filing date or publication date in the first column.
+         Put any remaining known dates in Other dates. Put undated events last. Replace the table with one sentence when no events were found. -->
+    <div class="table-wrap"><table class="timeline">
+      <thead><tr><th scope="col">Date</th><th scope="col">Event</th><th scope="col">Other dates</th><th scope="col" class="evidence">Evidence</th></tr></thead>
+      <tbody><tr><td class="nowrap">{D Mon YYYY}<br><span class="muted">{Date type}</span></td><td>{Material event, including any limits specific to this row.}</td><td>{Other known dates, labelled}</td><td class="evidence"><a href="{url}">{Source}</a></td></tr></tbody>
+    </table></div>
   </section>
 
   <section>
@@ -247,8 +255,8 @@
 
   <section>
     <h2>Web and LinkedIn presence</h2>
-    <!-- Always these five items in this order: Website, LinkedIn, Hiring, Size (gender pay gap), Visa sponsor. Size for IR35 comes last, only for a contractor. -->
-    <ul class="plain-list"><li><strong>{Website|LinkedIn|Hiring|Size (gender pay gap)|Visa sponsor|Size for IR35}</strong> {What was found.}</li></ul>
+    <!-- First these five items in order: Website, LinkedIn, Hiring, Size (gender pay gap), Visa sponsor. Add Size for IR35 for contractors, then any material claim findings. -->
+    <ul class="plain-list"><li><strong>{Website|LinkedIn|Hiring|Size (gender pay gap)|Visa sponsor|Size for IR35|Customer deployment|Public contract|Regulatory status}</strong> {What was found.}</li></ul>
   </section>
 
   <section>

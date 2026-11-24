@@ -46,15 +46,19 @@ Fill in `--aka` before the first run. Companies House only knows registered name
 
 Exit codes: `0` JSON report on stdout, `2` no key or API unreachable (use path B), `3` ambiguous name (candidates on stdout, ask the user).
 
-The JSON has `company`, `directors` (active directors plus individual owners who are not directors, each with a `role`), `pscs`, `flags` (already sorted by severity, each with an evidence URL and a `record` of `own`, `parent` or `director` saying whose record it comes from) and `meta` (caps hit, caveats). If `meta.people_without_officer_record` names anyone, the script found no officer record for that owner, so check their other companies by hand as in Path B step 3. Use the flags as given; add context, do not upgrade or drop them. There are two exceptions: the trading-name check below can raise a phoenix rating, and a tribunal decision you have read can raise a tribunal lead.
+The JSON has `company`, `directors` (active directors plus individual owners who are not directors, each with a `role`), `pscs`, `flags` (already sorted by severity, each with an evidence URL and a `record` of `own`, `parent` or `director` saying whose record it comes from) and `meta` (caps hit, caveats). If `meta.people_without_officer_record` names anyone, the script found no officer record for that owner, so check their other companies by hand as in Path B step 3. Use the script flags with source-linked context. Change a flag only where a specific rule below calls for it. Link the evidence for any change, including the judgment when a court outcome changes the rating.
 
 `company.accounts.history` holds up to five years of accounts, newest first: net assets, net current assets, cash, average employees, turnover, profit and staff costs where the filing tagged them, `payroll_months_in_cash` (cash divided by a month of staff costs), and `format` (`ixbrl`, `pdf` or `unavailable`). The script only reads iXBRL. For the latest year, and for the year before it when the latest has no comparatives, read any `pdf` year as in "Reading PDF accounts" below: the same four figures and the going-concern note. Apply the accounts rules below to what you read, and say in "Not checked and limits" which years were read by hand.
+
+`company.timeline` supplies Companies House events, evidence links and coverage limits from the records returned. Check its dates and sources, inspect charge documents, and add material events from step 2 using [Material events after the accounts](references/evidence-and-funding.md#material-events-after-the-accounts). Put the combined timeline under Company record.
 
 `company.gazette` holds the corporate insolvency notices from The Gazette in the last five years that carry this company's number. A petition to wind up appears there weeks before Companies House shows anything, so the script flags one from the last 24 months as high and any other notice as medium. `meta.gazette_name_only` lists notices that matched a name but not the number: open each, and treat it as this company's only if the address or a director's name confirms it, then rate it as the script would and say you did so by hand. If `company.gazette.failed_searches` is not empty, search The Gazette by hand for those names and note it in "Not checked and limits".
 
 `company.parents` follows active corporate PSCs with explicit majority share or voting control, or board-appointment control, up to three levels. This is an inferred control chain, not a complete shareholder register or proof of a parent's financial guarantee. Each inferred parent gets the register and Gazette checks but not the director checks, and its findings come back as flags prefixed `parent_` with the same severity. Present each one as the parent's, never the employer's own: "Parent {name}: …". Owners recorded without a company number are found by an exact name search and marked `matched_by: "name"`: say so in "Not checked and limits".
 
-`meta.parents_not_followed` records corporate PSCs not followed and why, including ceased status, insufficient control evidence, unresolved UK registration, ambiguous names and the depth limit. Describe minority and historical owners as such in section 3, without inheriting their findings as parent risks. Cessation of PSC status does not prove all shares were sold. `meta.group_ownership_not_followed` lists corporate PSCs skipped during related-company checks when their control basis or UK registration was unresolved. Keep any resulting pattern findings and explain the uncertainty. Check the relevant PSC records when a group exclusion materially affects the result, especially for name-only or historical links. For a foreign inferred parent, run one web search for insolvency or administration news under its name. Say "No current corporate parent identified in the records checked" when appropriate, not that no wider relationship exists.
+`meta.parents_not_followed` records corporate PSCs not followed and why, including ceased status, insufficient control evidence, unresolved UK registration, ambiguous names and the depth limit. Describe minority and historical owners as such in section 3 and attribute parent risk only to the inferred current parents. For a foreign inferred parent, run one web search for insolvency or administration news under its name. Say "No current corporate parent identified in the records checked" when appropriate.
+
+For a related company marked `group_member`, `group_membership` shows the date used, its source link, the common group company and the control paths from both companies. In section 3, explain material exclusions with the closure date, the controlling links, their recorded PSC dates and how each owner was matched. Link the closure date and each PSC record. For a name-only match, link the matched profile and confirm the name it held at closure. Review relevant control change filings. Use `group_membership_gap`, `meta.group_ownership_not_followed` and incomplete entries in `meta.psc_paging` in "Not checked and limits". Keep the resulting cycling findings where group membership could not be established.
 
 These public records come back as context:
 
@@ -97,9 +101,9 @@ Some environments block outbound API calls. The same data is on the public Compa
 
 1. Web-search `<company name> Companies House` and open the company's page on find-and-update.company-information.service.gov.uk.
 2. Read the overview (status, incorporation date, accounts and confirmation statement due dates, previous names), then the People, Filing history, Charges and Insolvency tabs. Open the latest two sets of accounts from the filing history, read them as in "Reading PDF accounts" and apply the accounts rules above. Search thegazette.co.uk for corporate insolvency notices under each current and previous name, and rate the ones that show the company number as the script does: a petition to wind up in the last 24 months is high, any other insolvency notice from the last five years is medium.
-3. Record each corporate PSC's control basis and whether it is current or ceased. Follow a UK corporate owner as an inferred parent only when majority or board control is supported, checking its status, filings, insolvency and Gazette notices up to three levels. Keep minority, former and uncertain relationships separate; do not treat their findings as the employer's or an inferred parent's. Use the same control test before treating another company as a group member in the phoenix and cycling checks.
+3. Record each corporate PSC's control basis and whether it is current or ceased. Follow a UK corporate owner as an inferred parent only when majority or board control is supported, checking its status, filings, insolvency and Gazette notices up to three levels. Keep minority, former and uncertain relationships separate; do not treat their findings as the employer's or an inferred parent's. For a cycling exclusion, check the PSC pages and filings on both sides for evidence of control at the related company's closure. Keep the related company in the check and record the gap if the date or any necessary link is unclear.
 4. Open the appointments page of each active director and of each individual owner (find owners with the officer search, matching name and birth month), and apply the phoenix test below by hand.
-5. Record in "Not checked and limits" that path B was used and what could not be opened.
+5. Build the timeline from the overview, filing history, charges and people pages using [Material events after the accounts](references/evidence-and-funding.md#material-events-after-the-accounts). Work back to the latest filed accounts year-end and record any pages or relevant documents you could not inspect. Record that path B was used in "Not checked and limits".
 
 ### What counts as a phoenix pattern
 
@@ -109,7 +113,7 @@ A phoenix company is a new company continuing the business of one that went inso
 - Insolvency plus any one other signal: **possible** (medium).
 - One dissolved company with no insolvency is normal housekeeping, not a flag.
 - A members' voluntary liquidation is a solvent wind-up: the directors declare the company can pay its debts in full, and groups use it to close subsidiaries they no longer need. It is not insolvency. The script marks these `solvent_liquidation` and leaves them out of the phoenix test and the Insolvent count. In path B, open the Insolvency tab before counting a liquidation as insolvency.
-- **Serial cycling**: two or more closed companies in the last 10 years that share the target's name (current or previous names on either side) or its registered postcode. Some operators open a new company every year or two, move the business across and close or merge the old one, so each step looks harmless and only the chain gives it away. Medium at two, high at three or more or when any of them failed while the director was in post. Solvent liquidations are listed in the chain but do not count towards the three for high. List the chain in date order with each company's years. A company in the target's own group, meaning a subsidiary or a sister owned by one of the target's parents, that closed without insolvency is the group tidying up, not cycling: the script marks these `group_member` and leaves them out. In path B, open the Persons with significant control tab of each closed company before counting it.
+- **Serial cycling**: two or more closed companies in the last 10 years that share the target's name (current or previous names on either side) or its registered postcode. Some operators open a new company every year or two, move the business across and close or merge the old one, so each step looks harmless and only the chain gives it away. Medium at two, high at three or more or when any of them failed while the director was in post. Solvent liquidations are listed in the chain but do not count towards the three for high. List the chain in date order with each company's years. The script excludes a related company that closed without insolvency only when the records support a controlling group link at dissolution or at the start of a solvent winding-up. The link may run to the employer itself or to a common corporate controller. A PSC link must be recorded by the relevant date and its recorded cessation must fall later if it has ceased.
 
 Companies House does not record that one company's business was merged into another. The chain of shared directors, names and addresses is the evidence: present it as that, and do not state a merger as fact unless a filing or news source confirms it.
 
@@ -139,7 +143,7 @@ Run these searches (in parallel where possible), look back about five years, and
 | Topic | Search for | Capture |
 |---|---|---|
 | Funding and investment | `<name> funding round raised investment`, `<name> acquired acquisition investors` | Event and publication dates, currency, amount, round versus cumulative total, announced/closed/estimated status, investors or acquirer, original source |
-| Redundancies | `<name> redundancies layoffs job cuts`, `<name> restructuring`, then `<name> job cuts <year>` for each of the last five years the first results do not cover | Every round in the last five years, newest first: date, what happened, how many or what share of staff. Add any year-on-year fall in average employees from the accounts history |
+| Redundancies | `<name> redundancies layoffs job cuts`, `<name> restructuring`, then `<name> job cuts <year>` for each of the last five years the first results do not cover | Every round in the last five years, newest first: event and publication dates, proposed or completed, what happened, how many or what share of staff. Add any year-on-year fall in average employees from the accounts history |
 | Media coverage | `<name> news`, `<name> <CEO or founder name>` | Up to 8 items: date, outlet, headline, tone |
 | Legal and financial trouble | `<name> administration insolvency winding up`, `<name> employment tribunal`, `<name> The Gazette notice`, `<name> lawsuit fine investigation` | Tribunal decisions, winding-up petitions, regulator action, unpaid wages or other money owed to staff |
 | Unpaid pensions | Search the company's name on the Pensions Regulator's published penalty notices and court orders (https://www.thepensionsregulator.gov.uk/en/document-library/enforcement-activity/penalty-notices) and `<name> pensions regulator penalty` | A named entry that matches the company's name and town is a medium flag under Legal and insolvency notices, linked to the notice |
@@ -153,6 +157,8 @@ Run these searches (in parallel where possible), look back about five years, and
 
 **Funding evidence.** Do not add a cumulative total to rounds it may include, or count corrected filings as additional raises. Nominal share capital is not cash raised, valuation is not cash in the bank, and investor promotion does not establish a paid investment. Preserve conflicting amounts with their sources and dates. Treat paywall placeholders and retrieval failures as evidence limitations, not company misconduct. Directory listings, accelerator membership and a sound product concept do not establish revenue, security certification or a tested implementation; attribute each claim at its actual scope.
 
+**Targeted claim checks.** Read [Claim verification](references/claim-verification.md) when the user asks to verify funding, a named customer, a public contract or a regulatory claim, or when routine research finds one that could materially change the employment assessment. Check the relevant regulated activity if the business appears to carry it out. Follow only the relevant routes and use public sources. Put the evidence and its limits in the usual report.
+
 **Directors are people.** Report only their company roles and business press. Leave out home addresses, dates of birth, family and personal social media.
 
 ## Step 3 - Risk rating
@@ -163,7 +169,7 @@ Run these searches (in parallel where possible), look back about five years, and
 
 If Companies House could not be checked for a UK company, write the rating as "LOW (limited data)" at best. A missing check is not a clean result. When the record was checked but is too short to say much, because the company is under two years old, has filed one set of accounts or fewer, or has no employees, write "LOW (thin record)" instead of a plain LOW. In the HTML report the rating and the scale say only "Low", and the qualifier ("Limited data" or "Thin record") goes on its own line below the rating.
 
-The script's pattern flags (phoenix, company cycling, director insolvencies) already leave out the target's own group, solvent liquidations and failures that happened before a director joined or more than a year after they left. Use them as rated. If a pattern flag still looks like group housekeeping after the hand checks, keep its rating and say in the flag's row what the evidence shows, with a link, such as an accounts note on closing dormant subsidiaries.
+Use the script's pattern flags as rated. The cycling check excludes dated group closures where the records support the link, and the phoenix and director insolvency checks account for solvent liquidation and the timing of director appointments. If a pattern flag still looks like group housekeeping after the hand checks, keep its rating and say in the flag's row what the evidence shows, with a link, such as an accounts note on closing dormant subsidiaries.
 
 ## Step 4 - The report
 
@@ -236,6 +242,14 @@ Under the table, one short paragraph per point, in everyday words, for the lates
 
 Avoid "revaluation reserve", "net current liabilities", "retained profit" and "profit and loss account" here. The plain sentence carries the meaning.
 
+**Material events after the accounts**
+
+State the accounts year-end, then list up to 10 material events oldest first. Label effective dates, filing dates, publication dates and deadlines. Follow the [timeline guidance](references/evidence-and-funding.md#material-events-after-the-accounts) for missing dates, charge documents and the empty case.
+
+| Date | Event | Other dates | Evidence |
+|---|---|---|---|
+| {D Mon YYYY and date type} | {one short sourced statement} | {other known dates, labelled} | [{source}]({url}) |
+
 ## 3. Directors and owners
 
 | Director | Since | Other companies | Notes |
@@ -281,6 +295,8 @@ Put scope and evidence status in Event (for example, "Reported cumulative equity
 - **Visa sponsor:** {Licensed, with type and rating | Not on the current register}
 - **Size for IR35:** {Small | Not small | Probably small | Unknown}, with the figures it rests on and, for a group company, the group's size. Only when the reader is or may be a contractor
 
+After these items, add short linked findings for material customer, public contract or regulatory claims when checked. Give the entity, evidence date and what the source establishes. Keep the limits and next checks in sections 10 and 9.
+
 ## 9. Verify next
 
 1. {The check that would most change this picture, with a link to where to do it}
@@ -299,7 +315,7 @@ Put scope and evidence status in Event (for example, "Reported cumulative equity
 
 This section is for the reader. List the checks you could not complete that would most change the picture, most useful first, each with a link to where to do it. Three to five items. Include one question worth putting to the employer when there is one.
 
-When the risk is Medium or High, or the latest accounts show net liabilities, one item is always a search of the register of County Court Judgments on TrustOnline (https://www.trustonline.org.uk), noting the small fee. An unpaid judgment is one of the earliest public signs that a company cannot pay its bills, and no free source shows it. Never run that search yourself: paying for it is the user's call.
+Suggest an optional paid [TrustOnline](https://www.trustonline.org.uk) lookup for County Court Judgments (CCJs) only when public evidence shows material payment risk for the employer and the result could change the reader's decision. Examples include evidence of unpaid wages or supplier debts, persistently slow supplier payments, or a recent winding-up petition about an unpaid debt. Name and link the evidence that prompted the suggestion. An overall Medium or High rating or net liabilities alone is insufficient. State that the lookup costs a fee and leave it to the reader. Do not run it or contact anyone.
 
 The section is not a place for notes about this skill: if a run exposes a gap in the script or in these instructions, tell the user in the chat instead.
 
@@ -325,11 +341,11 @@ Statuses:
 - **Concern** - a high-severity finding in that area.
 - **Caution** - a medium-severity finding, or a named gap that matters (say which in the line).
 - **Clear** - checked, nothing adverse. Low and info flags are mentioned in the line but leave the area Clear.
-- **No data** - nothing to judge from. A search that found nothing is never Caution. For register checks (Gazette, tribunals, insolvency, redundancies) nothing found means nothing recorded, so the area is Clear. For media coverage and employee reviews, no results tell you nothing, so the area is No data.
+- **No data** - nothing to judge from. For routine register checks (Gazette, tribunals, insolvency, redundancies) an empty result means nothing was found in the records searched, so the area is Clear. For media coverage and employee reviews, no results tell you nothing, so the area is No data. Apply the Coverage rule below if an empty result leaves a decision-material question unresolved.
 
 The status and its line must agree: a line that explains a finding away cannot sit under Concern. Under Money, payroll cover under three months in the latest year is a named gap (Caution).
 
-For "Coverage of this check": Clear when the API path ran with no caps hit, Caution for path B, stale data or caps hit, Concern when the registry could not be checked at all. The scorecard never contradicts the Red flags table: every high flag shows as a Concern in its area. A `parent_` flag counts in the same area as the flag without the prefix, and the area's line names the parent.
+For "Coverage of this check", use Concern if the registry could not be checked at all. Otherwise use Caution for path B, stale data, caps hit or a named evidence gap that could change the decision, such as incomplete PSC records on a material ownership link. Use Clear when the API path ran and none of those limitations apply. Every high flag shows as a Concern in its area. A `parent_` flag counts in the same area as the flag without the prefix, and the area's line names the parent.
 
 ### Page shell
 

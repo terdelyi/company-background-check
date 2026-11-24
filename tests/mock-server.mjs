@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { readdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
-// Paging params are ignored so fixtures stay short; these are the ones that change the answer.
+// Paging params are normally ignored so fixtures stay short; PSC pages can override this below.
 const KEY_PARAMS = ['q', 'category', 'text', 'query'];
 // The real Gazette, gov.uk and Find Case Law searches answer a search with no hits with 200 and no entries, not 404.
 const GAZETTE_NO_HITS = { 'f:total': '0' };
@@ -47,7 +47,13 @@ export function resetFailures() {
 
 /** @returns {{ status: number, headers: Record<string, string>, body: string, miss?: string }} */
 export function answer(routes, url, hasAuth) {
-  const key = routeKey(url);
+  let key = routeKey(url);
+  // PSC fixtures may supply specific pages; fall back to the existing unpaged route.
+  const u = new URL(url, 'http://mock');
+  if (/\/persons-with-significant-control$/.test(u.pathname) && u.searchParams.has('start_index')) {
+    const pageKey = `${key}${key.includes('?') ? '&' : '?'}start_index=${u.searchParams.get('start_index')}`;
+    if (routes.has(pageKey)) key = pageKey;
+  }
   if (!routes.has(key) && key.startsWith('/all-notices/')) {
     return { status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify(GAZETTE_NO_HITS) };
   }

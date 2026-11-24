@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: overstated-employer-claims
+expected_outcome: |
+  The report identifies unsupported or narrower claims without turning absence into misconduct. It preserves the financial decline, distinguishes positive net assets from late payment evidence, and does not suggest a paid CCJ search on that basis alone.

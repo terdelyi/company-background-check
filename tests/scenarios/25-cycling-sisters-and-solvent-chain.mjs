@@ -39,6 +39,7 @@ export default {
       appointment('ZZ100253', 'PLACEHOLDER HARBOUR CRANES LTD', 'liquidation'),
     ),
     '/company/ZZ100250': sister,
+    ...Object.fromEntries(['ZZ100250', 'ZZ100251', 'ZZ100252', 'ZZ100253'].map(n => [`/company/${n}/filing-history`, list()])),
     '/company/ZZ100250/persons-with-significant-control': list(corporatePsc('Placeholder Harbour Holdings Ltd', 'ZZ200025', 'England')),
     ...Object.assign({}, ...[['ZZ100251', 'PLACEHOLDER HARBOUR FREIGHT LTD', '2017-01-01'], ['ZZ100252', 'PLACEHOLDER HARBOUR DOCKS LTD', '2018-01-01'], ['ZZ100253', 'PLACEHOLDER HARBOUR CRANES LTD', '2019-01-01']]
       .map(([number, name, created]) => ({

@@ -21,6 +21,7 @@ See the [ownership and control evidence panel](.github/sample-ownership.png) for
 - **Companies House:** status, filings, charges, insolvency history, directors and owners
 - **Directors and owners:** phoenix companies, companies opened and closed in quick succession, and the disqualified directors register
 - **Accounts:** net assets, short-term debts, cash, headcount and turnover for up to five years, and going-concern warnings. Accounts filed as PDF are read by the agent, scanned ones too on macOS
+- **Events after the accounts:** a source-linked timeline of material changes since the latest accounts year-end, including lender security, funding, director and control changes, missed filings and reported redundancies
 - **Corporate owners:** current controlling parents followed up to the UK parent, with minority and historical interests kept separate
 - **The Gazette:** winding-up petitions and other insolvency notices
 - **Employer registers:** employment tribunal decisions, gender pay gap filings, the visa sponsor register and payment practice reports
@@ -31,6 +32,8 @@ See the [ownership and control evidence panel](.github/sample-ownership.png) for
 Every flag links to its evidence. Anything matched on a name alone is reported as a lead to verify, never as a finding.
 
 Funding figures are attributed and separated into rounds, cumulative totals and valuations; they are never treated as current cash. Conflicting claims and inaccessible filings stay visible as evidence limits, including when figures could only be recovered from indexed filing text.
+
+When a claim could change the employer assessment, the skill checks what investors or filings confirm about funding, what customers say is live, what public procurement records show was awarded or delivered, and whether the right entity has permission for the activity it carries out. The findings and any next checks go in the same report.
 
 ## Install
 
