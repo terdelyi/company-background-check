@@ -16,7 +16,9 @@ const registerExtent = status => /^(?:satisfied|fully-satisfied)$/.test(status |
 const compatibleExtents = (a, b) => !a || !b || a === b;
 // The filing date and the register's delivered_on can differ by a day around processing cut-offs.
 const withinADay = (a, b) => a && b && Math.abs(Date.parse(a) - Date.parse(b)) <= 86_400_000;
-const replacement = f => /^(RP01|RP04)$/i.test(f.type || '') || /(?:^|-)(?:second|replacement|replaced|corrected)(?:-|$)/i.test(f.description || '');
+// Companies House appends the replaced form's type, as in RP01SH01.
+const replacementType = type => /^RP0[14]/i.test(type || '');
+const replacement = f => replacementType(f.type) || /(?:^|-)(?:second|replacement|replaced|corrected)(?:-|$)/i.test(f.description || '');
 
 export function buildTimeline({ accounts, confirmationStatement, number, filings, charges, today = new Date().toISOString().slice(0, 10) }) {
   const items = filings?.items || [], register = charges?.items || [], limits = new Set(), events = [], seen = new Set();
@@ -83,8 +85,9 @@ export function buildTimeline({ accounts, confirmationStatement, number, filings
   for (const f of orderedItems) {
     const d = f.description || '', v = f.description_values || {}, type = f.type || '';
     const relevant = /^(?:MR01|MR04|AP01|AP02|TM01|PSC0[1-7]|SH01)$/i.test(type) || /^(?:mortgage-(?:create|satisfy)|appoint-.*director|termination-.*director|notification-of-a-person-with-significant-control|change-to-a-person-with-significant-control|cessation-of-a-person-with-significant-control)/.test(d);
-    if (replacement(f)) { if (relevant || (!anchor || !date(f.date) || f.date > anchor) && /^(RP01|RP04)$/i.test(type)) limits.add('Replacement or corrected filings need manual review; they are not counted as new events.'); if (f.transaction_id) removedTransactions.add(f.transaction_id); continue; }
-    if (relevant && removed(f)) { limits.add('A relevant filing has a removal or rectification annotation; check the register before relying on it.'); if (f.transaction_id) removedTransactions.add(f.transaction_id); continue; }
+    const named = `${type || 'Filing'} filed ${date(f.date) || 'on an unknown date'}`;
+    if (replacement(f)) { if (relevant || (!anchor || !date(f.date) || f.date > anchor) && replacementType(type)) limits.add(`${named} replaces or corrects an earlier filing and is not counted as a new event. Read it for the corrected details: ${filingUrl(f)}`); if (f.transaction_id) removedTransactions.add(f.transaction_id); continue; }
+    if (relevant && removed(f)) { limits.add(`${named} has a removal or rectification annotation and is not counted. Check it before relying on it: ${filingUrl(f)}`); if (f.transaction_id) removedTransactions.add(f.transaction_id); continue; }
     if (relevant && ((f.annotations || []).length || (f.associated_filings || []).length)) limits.add('Some relevant filings have annotations or associated filings; check for corrections before relying on them.');
     let kind, summary, effective, extra = {}, identity = f.transaction_id ? `filing:${f.transaction_id}` : `filing:${JSON.stringify(f)}`;
     if (/^mortgage-create/.test(d) || type === 'MR01') { kind = 'charge_created'; summary = 'Charge created'; effective = v.charge_creation_date; }
