@@ -18,7 +18,7 @@ See the [ownership and control evidence panel](.github/sample-ownership.png) for
 
 ## What it checks
 
-- **Companies House:** status, filings, charges, insolvency history, directors and owners
+- **Companies House:** status, filings and late filings, charges, insolvency history, directors and owners
 - **Directors and owners:** phoenix companies, companies opened and closed in quick succession, and the disqualified directors register
 - **Accounts:** net assets, short-term debts, cash, headcount and turnover for up to five years, and going-concern warnings. Accounts filed as PDF are read by the agent, scanned ones too on macOS
 - **Events after the accounts:** a source-linked timeline of material changes since the latest accounts year-end, including lender security, funding, director and control changes, missed filings and reported redundancies
@@ -27,7 +27,7 @@ See the [ownership and control evidence panel](.github/sample-ownership.png) for
 - **Employer registers:** employment tribunal decisions, gender pay gap filings, the visa sponsor register and payment practice reports
 - **Court judgments:** judgments of the High Court and the courts above it on Find Case Law that name the company as a party
 - **IR35 size:** whether the company counts as small, for contractors
-- **The web:** funding, redundancies, press coverage, minimum wage and pension penalty naming, and employee reviews
+- **The web:** funding, redundancies, press coverage, claims the company makes on its website, minimum wage and pension penalty naming, and employee reviews
 
 Every flag links to its evidence. Anything matched on a name alone is reported as a lead to verify, never as a finding.
 

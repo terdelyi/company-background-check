@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: late-filing-and-website-claims
+expected_outcome: |
+  The report raises the script's low late_filing flag with each late filing and its due date,
+  lists the website's claims in "Claims on the website" with the unnamed law-firm pilot marked
+  Unverified, and finds the founder interview through the founder's name despite a better-known
+  namesake, which it names once as excluded.

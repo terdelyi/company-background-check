@@ -78,6 +78,7 @@ The script raises these flags from iXBRL accounts. Apply them by hand to PDF acc
 - **Net liabilities** (medium): net assets below zero at the latest year end.
 - **Net assets fall** (medium): net assets more than halved since the year before, while still positive.
 - **Headcount fall** (medium): average employees in the latest year more than a quarter below the highest year in the history, so cuts spread over several years still count. Skip it when that highest year had fewer than 5 employees, where one person leaving is not a trend.
+- **Late filing** (low, medium at three or more): accounts or confirmation statements filed after their deadline in the last five years. The script works out each deadline from the filing history and names every late filing with its due date. It skips accounts whose year-end was changed around that time and lists them in `meta.late_filing_unclear`: check those deadlines by hand and say in "Not checked and limits" if you cannot. In path B, apply the same deadlines by hand: first accounts 21 months after incorporation (18 for a plc), later accounts 9 months after the year-end (6 for a plc), and a confirmation statement 14 days after its review period ends.
 
 Keep every financial conclusion tied to its accounting date. Current assets are not cash; historical net liabilities do not establish current cash insolvency, and an announced funding round does not remove the historical flag. Historical payroll cover is not current runway. Do not infer today's workforce from a historic average of zero employees.
 
@@ -138,22 +139,23 @@ A phoenix is one of several legal or semi-legal setups that can leave staff owed
 
 ## Step 2 - Web research
 
-Run these searches (in parallel where possible), look back about five years, and keep the most recent items first. `<name>` means the registered name and every trading name you passed to `--aka`: press, LinkedIn pages and review sites usually use the brand, so a search under the registered name alone misses them. Before using any hit, confirm it is about this company and not a namesake: check location, sector or a director's name. A short brand such as a set of initials matches many unrelated businesses, so pair it with the sector or town.
+Run these searches (in parallel where possible), look back about five years, and keep the most recent items first. `<name>` means the registered name and every trading name you passed to `--aka`: press, LinkedIn pages and review sites usually use the brand, so a search under the registered name alone misses them. Before using any hit, confirm it is about this company and not a namesake: check location, sector or a director's name. A short brand such as a set of initials matches many unrelated businesses, so pair it with the sector or town. When a better-known business shares the brand, run every search in the table with the website domain, the registered name or a founder's name instead of the brand alone, and name the excluded namesake once in the media section.
 
 | Topic | Search for | Capture |
 |---|---|---|
 | Funding and investment | `<name> funding round raised investment`, `<name> acquired acquisition investors` | Event and publication dates, currency, amount, round versus cumulative total, announced/closed/estimated status, investors or acquirer, original source |
 | Redundancies | `<name> redundancies layoffs job cuts`, `<name> restructuring`, then `<name> job cuts <year>` for each of the last five years the first results do not cover | Every round in the last five years, newest first: event and publication dates, proposed or completed, what happened, how many or what share of staff. Add any year-on-year fall in average employees from the accounts history |
-| Media coverage | `<name> news`, `<name> <CEO or founder name>` | Up to 8 items: date, outlet, headline, tone |
+| Media coverage | `"<registered name>"`, `<name> news`, `<name> <town or sector>`, the website domain in quotes, and each founder's or CEO's full name with the brand or sector, which also finds interviews and podcasts that name the person but not the company | Up to 8 items: date, outlet, headline, tone |
+| Claims on the website | Open the home, about, customers or case studies, and press or news pages | Up to three claims about customers, partners, funding or regulation, the ones that would matter most to someone joining. Mark each Verified (a dated source from the other party or an official register confirms it), Contradicted, or Unverified |
 | Legal and financial trouble | `<name> administration insolvency winding up`, `<name> employment tribunal`, `<name> The Gazette notice`, `<name> lawsuit fine investigation` | Tribunal decisions, winding-up petitions, regulator action, unpaid wages or other money owed to staff |
 | Unpaid pensions | Search the company's name on the Pensions Regulator's published penalty notices and court orders (https://www.thepensionsregulator.gov.uk/en/document-library/enforcement-activity/penalty-notices) and `<name> pensions regulator penalty` | A named entry that matches the company's name and town is a medium flag under Legal and insolvency notices, linked to the notice |
 | Minimum wage | `HMRC national minimum wage named employers <name>` and the latest gov.uk naming list | A named entry that matches the company's name and town is a medium flag under Legal and insolvency notices, linked to the list |
 | Employee reviews | `<name> Glassdoor reviews`, `<name> Indeed reviews` | Rating, review count, recurring themes |
-| Presence | `<name> LinkedIn`, the company website | Headcount and trend if visible, whether the site and the registered details agree, current hiring |
+| Presence | The company website, then for LinkedIn the link in the website's footer or social links, or `site:linkedin.com/company <name>` with the domain or town | The LinkedIn company page URL, whether the site and the registered details agree, current hiring |
 
 **Tone labels for media items.** Label each item Positive, Neutral or Negative for what it says about the company as a business and employer, not for the writer's style. Growth, funding, awards and contract wins are Positive. Layoffs, losses, disputes, regulatory action and unpaid bills are Negative. The company's own press releases and sponsored pieces are Neutral and marked "(own PR)". The overall tone is Positive, Mixed, Negative or Little coverage.
 
-**Review sites.** Glassdoor and LinkedIn have no public API and forbid scraping, so use only what search results and openly readable pages show. Report a rating only if a source states it; otherwise write "Not found". Never estimate one.
+**Review sites.** Glassdoor and LinkedIn have no public API and forbid scraping, so use only what search results and openly readable pages show. Report a rating only if a source states it; otherwise write "Not found". Never estimate one. LinkedIn pages sit behind a login, so the report links the company page for the reader instead of reporting a headcount. Confirm the page is this company's from the website link, the domain or the location before linking it. Take size from the accounts and the gender pay gap register.
 
 **Funding evidence.** Do not add a cumulative total to rounds it may include, or count corrected filings as additional raises. Nominal share capital is not cash raised: an SH01 form's "Amount paid" is per share, so multiply it by the shares allotted. Valuation is not cash in the bank, and investor promotion does not establish a paid investment. Preserve conflicting amounts with their sources and dates. Treat paywall placeholders and retrieval failures as evidence limitations, not company misconduct. Directory listings, accelerator membership and a sound product concept do not establish revenue, security certification or a tested implementation; attribute each claim at its actual scope.
 
@@ -193,6 +195,7 @@ The reader is an ordinary employee or job seeker, not a lawyer or accountant. Wr
 - Keep a legal or accounting term when it is the exact word on the record, because the reader may search for it or quote it to someone. Explain it in a few words the first time it appears: "entered administration (an insolvency process where an administrator takes control to rescue or sell the business)".
 - These terms always get a short explanation on first use: administration, liquidation (creditors' or members' voluntary, compulsory), solvent liquidation, company voluntary arrangement, winding-up petition, Gazette notice, charge, person with significant control, going concern, material uncertainty, net assets, net current assets or liabilities, micro-entity accounts, dormant, strike-off, phoenix pattern, company cycling.
 - Use the plain term where nothing is lost: "owner" for person with significant control after the first mention, "lender security" for charge, "short-term debts" for current liabilities, "closed" for dissolved.
+- Leave out technical terms the reader never needs, such as file formats, API names and script field names. Write "the digital accounts filed at Companies House", not "iXBRL", and "Companies House records", not "the API".
 - Short sentences, one point each. No Latin, no "thereof", "pursuant to" or "in respect of".
 - No bold run-in lead-ins ("**Label.** Text"). Where the template gives a list item or flag a label, write the label as a few words with no full stop, and the template shows it on its own line.
 - Plain words never replace precision. Keep exact dates, amounts, company names and numbers, and say whose record a finding is.
@@ -232,7 +235,7 @@ Save the page as `<company-name>-background-check.html` and open it in the user'
 
 | Year end | Net assets | Net current assets | Cash | Payroll cover | Avg employees | Turnover | Format |
 |---|---|---|---|---|---|---|---|
-| {D Mon YYYY} | {£} | {£} | {£} | {n} months | {n} | {£} | {iXBRL, PDF (read by hand), PDF (indexed text), PDF (not read) or Unavailable} |
+| {D Mon YYYY} | {£} | {£} | {£} | {n} months | {n} | {£} | {Digital filing, PDF (read by hand), PDF (indexed text), PDF (not read) or Unavailable} |
 
 Under the table, one short paragraph per point, in everyday words, for the latest year:
 
@@ -289,13 +292,14 @@ Put scope and evidence status in Event (for example, "Reported cumulative equity
 ## 8. Web and LinkedIn presence
 
 - **Website:** {url, and whether it matches the registered details}
-- **LinkedIn:** {headcount and trend, or Not found}
+- **Claims on the website:** {up to three customer, partner, funding or regulatory claims, each marked Verified, Unverified or Contradicted with its source, or "None found on the pages checked"}
+- **LinkedIn:** {link to the company page with "Open it to see the current headcount and recent hires", or "No company page found" when none was located}
 - **Hiring:** {open roles seen, or Not found}
 - **Size (gender pay gap):** {latest size band and the years filed, or "Not on the register (under 250 staff, or not filing)"}
 - **Visa sponsor:** {Licensed, with type and rating | Not on the current register}
 - **Size for IR35:** {Small | Not small | Probably small | Unknown}, with the figures it rests on and, for a group company, the group's size. Only when the reader is or may be a contractor
 
-After these items, add short linked findings for material customer, public contract or regulatory claims when checked. Give the entity, evidence date and what the source establishes. Keep the limits and next checks in sections 10 and 9.
+After these items, add short linked findings for public contract or regulatory claims when checked. Give the entity, evidence date and what the source establishes. Keep the limits and next checks in sections 10 and 9.
 
 ## 9. Verify next
 

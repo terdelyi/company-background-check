@@ -310,6 +310,50 @@ function registerFlags(co, num, insolvency, filingItems) {
   return out;
 }
 
+const isIsoDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+// Companies House deadlines run to the same day of the month, or the month end when the start date is one.
+function addMonths(iso, n) {
+  const start = new Date(`${iso}T00:00:00Z`), day = start.getUTCDate();
+  const lastDay = (y, m) => new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const monthEnd = day === lastDay(start.getUTCFullYear(), start.getUTCMonth());
+  const target = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + n, 1));
+  const targetLastDay = lastDay(target.getUTCFullYear(), target.getUTCMonth());
+  target.setUTCDate(monthEnd ? targetLastDay : Math.min(day, targetLastDay));
+  return target.toISOString().slice(0, 10);
+}
+// First accounts are due 21 months after incorporation (18 for a plc), or 3 months after the period end if later.
+// Later accounts are due 9 months after the year-end (6 for a plc). A confirmation statement is due 14 days after its
+// review period ends, 12 months after the previous one (or incorporation); a company may confirm early, so the
+// made-up date alone does not set the deadline.
+function lateFilings(co, filingItems) {
+  const items = filingItems || [], plc = co.type === 'plc', created = isIsoDate(co.date_of_creation) ? co.date_of_creation : null;
+  const yearEndChanges = items.filter(f => f.type === 'AA01' && isIsoDate(f.date));
+  const accountsByPeriod = new Map(items.filter(f => f.type === 'AA' && isIsoDate(f.date) && isIsoDate(f.description_values?.made_up_date))
+    .sort((a, b) => b.date.localeCompare(a.date)).map(f => [f.description_values.made_up_date, f]));
+  const late = [], unclear = [];
+  for (const [madeUp, f] of accountsByPeriod) {
+    if (monthsAgo(f.date) > 60) continue;
+    const change = yearEndChanges.find(a => a.date > addMonths(madeUp, -24) && a.date <= f.date);
+    if (change) { unclear.push(`accounts to ${madeUp}: the year-end was changed on ${change.date}, so the deadline needs checking`); continue; }
+    const first = created && madeUp <= addMonths(created, 18);
+    const due = first ? [addMonths(created, plc ? 18 : 21), addMonths(madeUp, 3)].sort().at(-1) : addMonths(madeUp, plc ? 6 : 9);
+    if (f.date > due) late.push({ filed: f.date, text: `accounts to ${madeUp} filed ${f.date} (due ${due})` });
+  }
+  const confirmations = items.filter(f => /^(?:CS01|AR01)$/.test(f.type || '') && isIsoDate(f.date) && isIsoDate(f.description_values?.made_up_date))
+    .sort((a, b) => a.description_values.made_up_date.localeCompare(b.description_values.made_up_date));
+  for (const [i, f] of confirmations.entries()) {
+    if (f.type !== 'CS01' || monthsAgo(f.date) > 60) continue;
+    const madeUp = f.description_values.made_up_date;
+    const previous = i ? confirmations[i - 1].description_values.made_up_date : created && madeUp <= addMonths(created, 12) ? created : null;
+    if (!previous) continue;
+    const reviewEnd = addMonths(previous, 12);
+    const due = new Date(Date.parse(`${reviewEnd}T00:00:00Z`) + 14 * 864e5).toISOString().slice(0, 10);
+    if (f.date > due) late.push({ filed: f.date, text: `confirmation statement made up to ${madeUp} filed ${f.date} (due ${due})` });
+  }
+  late.sort((a, b) => a.filed.localeCompare(b.filed));
+  return { late: late.map(l => l.text), unclear };
+}
+
 // A petition reaches the Gazette weeks before Companies House records anything.
 // Search finds notices by name; only a notice that carries the company number becomes a flag.
 const searchName = n => n.replace(/[\s,]+(limited|ltd\.?|plc|llp)$/i, '').trim();
@@ -480,6 +524,8 @@ const ageMonths = c.date_of_creation ? monthsAgo(c.date_of_creation) : null;
 
 // --- company-level flags
 for (const f of registerFlags(c, number, insolv, filings?.items)) flag(f.severity, f.code, f.text, f.url);
+const lateFiled = lateFilings(c, filings?.items);
+if (lateFiled.late.length) flag(lateFiled.late.length >= 3 ? 'medium' : 'low', 'late_filing', `Filed late in the last 5 years: ${lateFiled.late.join('; ')}`, `${SITE}/company/${number}/filing-history`);
 if (c.accounts?.last_accounts?.type === 'dormant') flag('medium', 'dormant_accounts', 'Last accounts were filed as dormant');
 if (ageMonths !== null && ageMonths < 24) flag('low', 'young_company', `Incorporated ${c.date_of_creation} (${Math.round(ageMonths)} months old)`);
 const recentRenames = (c.previous_company_names || []).filter(p => p.ceased_on && monthsAgo(p.ceased_on) <= 36);
@@ -1021,7 +1067,7 @@ console.log(JSON.stringify({
     active_directors: activeDirs.length, resigned_last_12_months: recentResignations.length, url: `${SITE}/company/${number}`,
   },
   directors, pscs, flags,
-  meta: { requests, directors_not_checked: Math.max(0, activeDirs.length - MAX_DIRECTORS), people_without_officer_record: people.filter(p => !p.paths.length).map(p => p.name), company_lookups_skipped: skippedLookups, gazette_name_only: gazette.name_only, parents_not_followed: parentsNotFollowed, group_ownership_not_followed: [...groupOwnershipNotFollowed.values()], psc_paging: pscPaging, failed_company_tribunals: failedCompanyTribunals,
+  meta: { requests, late_filing_unclear: lateFiled.unclear, directors_not_checked: Math.max(0, activeDirs.length - MAX_DIRECTORS), people_without_officer_record: people.filter(p => !p.paths.length).map(p => p.name), company_lookups_skipped: skippedLookups, gazette_name_only: gazette.name_only, parents_not_followed: parentsNotFollowed, group_ownership_not_followed: [...groupOwnershipNotFollowed.values()], psc_paging: pscPaging, failed_company_tribunals: failedCompanyTribunals,
     caveats: ['Companies House often holds several officer records for one person, so appointment histories can be incomplete.', 'Name-based matches (similar names, disqualification hits) are leads to verify, not findings.',
       'Accounts figures are read from iXBRL tags only; a year marked "pdf" or "unavailable" has to be read by hand.',
       `Gazette notices from the last ${GAZETTE_LOOKBACK_MONTHS / 12} years are flagged only when they carry the company number; gazette_name_only lists the rest to check by hand.`,
