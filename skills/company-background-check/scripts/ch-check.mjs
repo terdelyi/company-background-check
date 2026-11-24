@@ -311,6 +311,33 @@ function registerFlags(co, num, insolvency, filingItems) {
 }
 
 const isIsoDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+// The price paid per share is only on the form itself, a PDF the script cannot read, so the agent reads each one.
+// The register's nominal capital after each allotment lets the agent check the share count it reads from a scan.
+function shareAllotments(num, filingItems) {
+  const formUrl = id => `${SITE}/company/${num}/filing-history/${encodeURIComponent(id)}/document?format=pdf&download=0`;
+  const replacementDate = text => {
+    const m = (text || '').match(/SH01\s*-\s*(\d{2})\/(\d{2})\/(\d{2,4})/);
+    return m ? `${m[3].length === 2 ? `20${m[3]}` : m[3]}-${m[2]}-${m[1]}` : null;
+  };
+  const gbpCapital = v => {
+    const gbp = (Array.isArray(v?.capital) ? v.capital : []).filter(x => x?.currency === 'GBP');
+    const figure = gbp.length === 1 ? Number(gbp[0].figure) : Number((v?.description || '').match(/statement of capital gbp\s*([\d.]+)/i)?.[1]);
+    return Number.isFinite(figure) ? figure : null;
+  };
+  const allotments = (filingItems || []).filter(f => /^(?:RP0[14])?SH01$/i.test(f.type || '') && isIsoDate(f.date) && f.transaction_id && monthsAgo(f.date) <= 60)
+    .map(f => {
+      const notes = (f.annotations || []).map(a => `${a.annotation || ''} ${a.description_values?.description || ''}`.trim()).join(' ');
+      const allotted = f.description_values?.date || replacementDate(f.description_values?.description);
+      return { form: f.type, allotted_on: isIsoDate(allotted) ? allotted : null, filed_on: f.date, replaced: /\b(?:replaced|removed|rectified|expunged)\b/i.test(notes), form_url: formUrl(f.transaction_id), nominal_capital_after: gbpCapital(f.description_values), nominal_increase: null };
+    })
+    .sort((a, b) => a.filed_on.localeCompare(b.filed_on));
+  let previous = null;
+  for (const a of allotments.filter(a => !a.replaced && a.allotted_on && a.nominal_capital_after !== null).sort((a, b) => a.allotted_on.localeCompare(b.allotted_on) || a.filed_on.localeCompare(b.filed_on))) {
+    if (previous !== null) a.nominal_increase = Math.round((a.nominal_capital_after - previous) * 1e6) / 1e6;
+    previous = a.nominal_capital_after;
+  }
+  return allotments;
+}
 // Companies House deadlines run to the same day of the month, or the month end when the start date is one.
 function addMonths(iso, n) {
   const start = new Date(`${iso}T00:00:00Z`), day = start.getUTCDate();
@@ -1057,6 +1084,7 @@ console.log(JSON.stringify({
       history: accountsHistory, going_concern_doubt: goingConcernDoubt },
     confirmation_statement: { next_due: c.confirmation_statement?.next_due || null, overdue: !!c.confirmation_statement?.overdue },
     timeline: buildTimeline({ accounts, confirmationStatement: c.confirmation_statement, number, filings, charges }),
+    share_allotments: shareAllotments(number, filings?.items),
     outstanding_charges: outstandingCharges, charges: outstandingChargeItems, insolvency_cases: (insolv?.cases || []).map(x => x.type),
     gazette: { searched_names: gazette.searched_names, failed_searches: gazette.failed_searches, notices: gazette.notices },
     parents, gender_pay_gap: genderPayGap, sponsor_register: sponsorRegister,

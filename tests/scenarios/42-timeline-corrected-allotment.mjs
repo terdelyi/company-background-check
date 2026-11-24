@@ -10,9 +10,14 @@ const allotment = (transaction_id, date, extra = {}) => ({
 });
 
 export default {
-  description: 'A replaced share allotment and its replacement are named with links in the timeline limits',
+  description: 'A replaced share allotment and its replacement are named with links in the timeline limits, and every allotment form is listed to read',
   args: [number],
   expect: { exit: 0, fields: {
+    'company.share_allotments': [
+      { form: 'SH01', allotted_on: '2026-01-19', filed_on: '2026-01-19', replaced: true, form_url: pdf('SH01-42-OLD'), nominal_capital_after: 14.6912, nominal_increase: null },
+      { form: 'SH01', allotted_on: '2026-01-19', filed_on: '2026-05-10', replaced: false, form_url: pdf('SH01-42'), nominal_capital_after: 14.6912, nominal_increase: 3.8312 },
+      { form: 'RP01SH01', allotted_on: '2026-01-18', filed_on: '2026-05-17', replaced: false, form_url: pdf('SH01-42-FIX'), nominal_capital_after: 10.86, nominal_increase: null },
+    ],
     'company.timeline.events.length': 1,
     'company.timeline.events.0.kind': 'share_allotment',
     'company.timeline.events.0.filed_date': '2026-05-10',

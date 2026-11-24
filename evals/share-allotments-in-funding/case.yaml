@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: share-allotments-in-funding
+expected_outcome: |
+  Every share allotment the script lists that is not replaced gets its own Funding row. The forms
+  cannot be opened in this offline test, so each row says "Amount not read" with the reason and
+  "Verify next" links the forms. Funding never says "Nothing found".
