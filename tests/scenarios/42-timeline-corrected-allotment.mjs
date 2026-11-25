@@ -10,13 +10,14 @@ const allotment = (transaction_id, date, extra = {}) => ({
 });
 
 export default {
-  description: 'A replaced share allotment and its replacement are named with links in the timeline limits, and every allotment form is listed to read',
+  description: 'A replaced share allotment and its replacements are named with links in the timeline limits, every allotment form is listed to read, and the replacements are checked to add up to the replaced form',
   args: [number],
   expect: { exit: 0, fields: {
     'company.share_allotments': [
-      { form: 'SH01', allotted_on: '2026-01-19', filed_on: '2026-01-19', replaced: true, form_url: pdf('SH01-42-OLD'), nominal_capital_after: 14.6912, nominal_increase: null },
+      { form: 'SH01', allotted_on: '2025-01-06', filed_on: '2025-04-24', replaced: false, form_url: pdf('SH01-42-EARLIER'), nominal_capital_after: 10.16, nominal_increase: null },
+      { form: 'SH01', allotted_on: '2026-01-19', filed_on: '2026-01-19', replaced: true, form_url: pdf('SH01-42-OLD'), nominal_capital_after: 14.6912, nominal_increase: null, replaced_by: [pdf('SH01-42'), pdf('SH01-42-FIX')], replacements_add_up: true },
       { form: 'SH01', allotted_on: '2026-01-19', filed_on: '2026-05-10', replaced: false, form_url: pdf('SH01-42'), nominal_capital_after: 14.6912, nominal_increase: 3.8312 },
-      { form: 'RP01SH01', allotted_on: '2026-01-18', filed_on: '2026-05-17', replaced: false, form_url: pdf('SH01-42-FIX'), nominal_capital_after: 10.86, nominal_increase: null },
+      { form: 'RP01SH01', allotted_on: '2026-01-18', filed_on: '2026-05-17', replaced: false, form_url: pdf('SH01-42-FIX'), nominal_capital_after: 10.86, nominal_increase: 0.7 },
     ],
     'company.timeline.events.length': 1,
     'company.timeline.events.0.kind': 'share_allotment',
@@ -36,6 +37,7 @@ export default {
       allotment('SH01-42-OLD', '2026-01-19', {
         annotations: [{ description: 'annotation', annotation: 'Replaced a replacement SH01 was registered 17/05/2026 as the original contained an error' }],
       }),
+      allotment('SH01-42-EARLIER', '2025-04-24', { description_values: { date: '2025-01-06', capital: [{ currency: 'GBP', figure: '10.16' }] } }),
     ],
     charges: list(),
   }),
