@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Lists a company website's own pages from its sitemap and home page links, so every page that might
-// carry a customer, partner or funding claim gets read. Usage: node site-pages.mjs <website url>
+// carry a customer, partner or funding claim gets read. Usage: node site-pages.mjs <website url> [--directory <profile url>]...
 import { pathToFileURL } from 'node:url';
 
 const USER_AGENT = 'company-background-check/1.0.0 (+https://github.com/terdelyi/company-background-check)';
@@ -39,6 +39,29 @@ export function claimSentences(html, { article = false } = {}) {
   return found.slice(0, MAX_CLAIMS_PER_PAGE);
 }
 
+// The company's own profiles on social networks. LinkedIn is deduplicated by page, since it serves the same page on country subdomains.
+export function socialLinks(html) {
+  const profile = /^https?:\/\/(?:[a-z]{2,3}\.|www\.)?(?:linkedin\.com\/(?:company|school|showcase)\/[^/?#]+|(?:x|twitter|instagram|facebook|youtube|tiktok)\.com\/(?!(?:intent|share|sharer|hashtag|search|home|watch|embed|playlist|shorts)\b)[@\w.-]+)/i;
+  const found = new Map();
+  for (const m of html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi)) {
+    const match = m[1].replace(/&amp;/g, '&').match(profile);
+    if (!match) continue;
+    const url = match[0];
+    const key = url.toLowerCase().replace(/^https?:\/\/(?:[a-z]{2,3}\.|www\.)?/, '');
+    if (!found.has(key)) found.set(key, url);
+  }
+  return [...found.values()];
+}
+
+// A directory profile can name a namesake, so its LinkedIn link only counts when the profile also links the company's site.
+export function directoryProfile(html, siteHost) {
+  const host = siteHost.replace(/^www\./, '');
+  const linksSite = [...html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']+)["']/gi)].some(m => {
+    try { return sameSite(new URL(m[1].replace(/&amp;/g, '&')).hostname, host); } catch { return false; }
+  });
+  return { links_company_site: linksSite, linkedin: linksSite ? socialLinks(html).filter(u => /linkedin\.com\//i.test(u)) : [] };
+}
+
 export function listSitePages({ base, homeHtml = '', sitemapXmls = [] }) {
   const root = new URL(base);
   const pages = new Map();
@@ -69,7 +92,8 @@ async function fetchText(url) {
 
 async function main() {
   const input = process.argv[2];
-  if (!input) { console.error('Usage: node site-pages.mjs <website url>'); process.exit(2); }
+  if (!input) { console.error('Usage: node site-pages.mjs <website url> [--directory <profile url>]...'); process.exit(2); }
+  const directoryUrls = process.argv.slice(3).flatMap((arg, i, args) => (args[i - 1] === '--directory' ? [arg] : []));
   const base = new URL(/^https?:\/\//.test(input) ? input : `https://${input}`).origin + '/';
   const failed = [];
   const homeHtml = await fetchText(base);
@@ -88,12 +112,20 @@ async function main() {
     }
   }
   const result = listSitePages({ base, homeHtml: homeHtml || '', sitemapXmls });
+  const pageHtml = [];
   for (const page of result.pages) {
     const html = page.source === 'home' ? homeHtml : await fetchText(page.url);
     if (html === null) { failed.push(page.url); page.claims = null; continue; }
     page.claims = claimSentences(html, { article: ARTICLE_PATH.test(new URL(page.url).pathname) });
+    pageHtml.push(html);
   }
-  console.log(JSON.stringify({ site: base, ...result, sitemap_found: sitemapXmls.length > 0, failed }, null, 2));
+  const social_links = socialLinks(pageHtml.join('\n'));
+  const directory_profiles = [];
+  for (const url of directoryUrls) {
+    const html = await fetchText(url);
+    directory_profiles.push(html === null ? { url, fetched: false } : { url, fetched: true, ...directoryProfile(html, new URL(base).hostname) });
+  }
+  console.log(JSON.stringify({ site: base, social_links, directory_profiles, ...result, sitemap_found: sitemapXmls.length > 0, failed }, null, 2));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) await main();

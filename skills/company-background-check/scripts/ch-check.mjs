@@ -331,10 +331,23 @@ function shareAllotments(num, filingItems) {
       return { form: f.type, allotted_on: isIsoDate(allotted) ? allotted : null, filed_on: f.date, replaced: /\b(?:replaced|removed|rectified|expunged)\b/i.test(notes), form_url: formUrl(f.transaction_id), nominal_capital_after: gbpCapital(f.description_values), nominal_increase: null };
     })
     .sort((a, b) => a.filed_on.localeCompare(b.filed_on));
+  const round = n => Math.round(n * 1e6) / 1e6;
+  const live = allotments.filter(a => !a.replaced && a.allotted_on && a.nominal_capital_after !== null)
+    .sort((a, b) => a.allotted_on.localeCompare(b.allotted_on) || a.filed_on.localeCompare(b.filed_on));
   let previous = null;
-  for (const a of allotments.filter(a => !a.replaced && a.allotted_on && a.nominal_capital_after !== null).sort((a, b) => a.allotted_on.localeCompare(b.allotted_on) || a.filed_on.localeCompare(b.filed_on))) {
-    if (previous !== null) a.nominal_increase = Math.round((a.nominal_capital_after - previous) * 1e6) / 1e6;
+  for (const a of live) {
+    if (previous !== null) a.nominal_increase = round(a.nominal_capital_after - previous);
     previous = a.nominal_capital_after;
+  }
+  // A replaced form is often restated as several forms, which together should add the same share capital.
+  const daysApart = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) / 864e5;
+  for (const old of allotments.filter(a => a.replaced && a.allotted_on)) {
+    const replacements = live.filter(a => a.filed_on > old.filed_on && daysApart(a.allotted_on, old.allotted_on) <= 31);
+    old.replaced_by = [...replacements].sort((a, b) => a.filed_on.localeCompare(b.filed_on)).map(a => a.form_url);
+    const before = live.filter(a => !replacements.includes(a) && !replacements.some(r => r.allotted_on <= a.allotted_on) && a.allotted_on <= old.allotted_on).at(-1);
+    old.replacements_add_up = replacements.length && before && old.nominal_capital_after !== null
+      ? round(old.nominal_capital_after - before.nominal_capital_after) === round(replacements.at(-1).nominal_capital_after - before.nominal_capital_after)
+      : null;
   }
   return allotments;
 }

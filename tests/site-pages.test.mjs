@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { claimSentences, listSitePages } from '../skills/company-background-check/scripts/site-pages.mjs';
+import { claimSentences, directoryProfile, listSitePages, socialLinks } from '../skills/company-background-check/scripts/site-pages.mjs';
 
 const base = 'https://placeholder-opco.example/';
 
@@ -63,4 +63,32 @@ test('catches case study labels, attributions and validations, and skips generic
 test('skips pull quotes in articles but keeps their claim sentences', () => {
   const html = '<blockquote>“The question is whether you can prove the role the human played.”</blockquote><p>The company was backed by two funds.</p>';
   assert.deepEqual(claimSentences(html, { article: true }), ['The company was backed by two funds.']);
+});
+
+test('collects the company profiles the site links to, and skips share buttons and personal profiles', () => {
+  const html = `<footer>
+    <a href="https://uk.linkedin.com/company/placeholder-opco/">LinkedIn</a>
+    <a href="https://www.linkedin.com/company/placeholder-opco">LinkedIn again</a>
+    <a href="https://www.linkedin.com/in/placeholder-person">Founder</a>
+    <a href="https://www.linkedin.com/shareArticle?url=x">Share</a>
+    <a href="https://x.com/placeholderopco">X</a>
+    <a href="https://twitter.com/intent/tweet?text=x">Tweet</a>
+    <a href="https://www.instagram.com/placeholderopco/">Instagram</a>
+    <a href="https://www.youtube.com/watch?v=abc">Video</a></footer>`;
+  assert.deepEqual(socialLinks(html), [
+    'https://uk.linkedin.com/company/placeholder-opco',
+    'https://x.com/placeholderopco',
+    'https://www.instagram.com/placeholderopco',
+  ]);
+});
+
+test('takes a LinkedIn link from a directory profile only when the profile links the company website', () => {
+  const profile = `<a href="https://www.placeholder-opco.example/">Website</a>
+    <a href="https://uk.linkedin.com/company/placeholder-opco">LinkedIn</a>
+    <script>{"sameAs":["https://www.linkedin.com/company/directory-owner/"]}</script>`;
+  assert.deepEqual(directoryProfile(profile, 'placeholder-opco.example'), {
+    links_company_site: true, linkedin: ['https://uk.linkedin.com/company/placeholder-opco'],
+  });
+  const namesake = '<a href="https://namesake.example/">Website</a><a href="https://www.linkedin.com/company/namesake">LinkedIn</a>';
+  assert.deepEqual(directoryProfile(namesake, 'placeholder-opco.example'), { links_company_site: false, linkedin: [] });
 });
